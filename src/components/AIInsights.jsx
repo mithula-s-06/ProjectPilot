@@ -1,15 +1,54 @@
 import React from 'react';
 import { FiCpu, FiCheckCircle, FiAlertTriangle, FiTrendingUp } from 'react-icons/fi';
 
-const AIInsights = () => {
-  const insights = [
-    { id: 1, type: 'success', text: 'Ankit Sharma has completed all assigned tasks.', icon: <FiCheckCircle className="text-emerald-500 w-4 h-4" /> },
-    { id: 2, type: 'warning', text: 'Sneha Reddy has low GitHub activity this week.', icon: <FiAlertTriangle className="text-amber-500 w-4 h-4" /> },
-    { id: 3, type: 'danger', text: 'Amit Mehta has missed two task deadlines.', icon: <FiAlertTriangle className="text-rose-500 w-4 h-4 animate-pulse" /> },
-    { id: 4, type: 'info', text: 'Weekly report submission is due tomorrow.', icon: <FiCpu className="text-cyan-500 w-4 h-4" /> },
-    { id: 5, type: 'success', text: 'Project overall health improved by 8%.', icon: <FiTrendingUp className="text-emerald-500 w-4 h-4" /> },
-    { id: 6, type: 'warning', text: 'Milestone 3 (API integrations) is likely to be delayed.', icon: <FiAlertTriangle className="text-amber-500 w-4 h-4" /> }
-  ];
+const AIInsights = ({ teamName = 'Not Assigned', tasks = [], members = [] }) => {
+  const insights = [];
+
+  // 1. General System Health
+  insights.push({
+    id: 1,
+    type: 'info',
+    text: 'AI code diagnostics monitoring is active and synced with GitHub repositories.',
+    icon: <FiCpu className="text-cyan-500 w-4 h-4" />
+  });
+
+  // 2. Weekly Report Reminders
+  insights.push({
+    id: 2,
+    type: 'info',
+    text: 'Weekly progress report submission cycle is active.',
+    icon: <FiTrendingUp className="text-emerald-500 w-4 h-4" />
+  });
+
+  // 3. Task Progress Diagnostics
+  const completedTasksCount = tasks.filter(t => t.status === 'Completed').length;
+  const totalTasksCount = tasks.length;
+  if (totalTasksCount > 0) {
+    const rate = Math.round((completedTasksCount / totalTasksCount) * 100);
+    insights.push({
+      id: 3,
+      type: rate >= 75 ? 'success' : 'warning',
+      text: `${completedTasksCount} out of ${totalTasksCount} tasks (${rate}%) are completed.`,
+      icon: rate >= 75 ? <FiCheckCircle className="text-emerald-500 w-4 h-4" /> : <FiAlertTriangle className="text-amber-500 w-4 h-4" />
+    });
+  } else {
+    insights.push({
+      id: 3,
+      type: 'warning',
+      text: 'No active tasks found. Create team tasks to view completion rate diagnostics.',
+      icon: <FiAlertTriangle className="text-amber-500 w-4 h-4" />
+    });
+  }
+
+  // 4. Team Member Contribution check
+  if (members.length > 0) {
+    insights.push({
+      id: 4,
+      type: 'success',
+      text: `Roster health: ${members.length} team members successfully configured and tracked.`,
+      icon: <FiCheckCircle className="text-emerald-500 w-4 h-4" />
+    });
+  }
 
   return (
     <div className="rounded-2xl border border-primary/20 bg-primary/5 p-6 shadow-md text-left w-full relative overflow-hidden">

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FiPlus, FiX, FiCheck, FiArrowLeft } from 'react-icons/fi';
 import TeamMemberCard from '../components/TeamMemberCard';
+import { api } from '../utils/api';
 
 const TeamMembers = ({ readOnly = false, projects = [] }) => {
   const [selectedProject, setSelectedProject] = useState(null);
@@ -15,26 +16,114 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
       
       if (myTeamName && myTeamName !== 'Not Assigned') {
         const teamUsers = registeredUsers.filter(u => u.team === myTeamName);
-        return teamUsers.map(u => ({
-          name: u.fullName || u.name,
-          role: u.role,
-          email: u.email,
-          githubUsername: u.githubUsername || (u.fullName || u.name).toLowerCase().replace(/\s+/g, '-'),
-          contribution: u.contribution !== undefined ? u.contribution : (u.role === 'Team Leader' ? 40 : Math.floor(Math.random() * 20) + 15),
-          currentTasks: u.currentTasks || (u.role === 'Team Leader' ? ['Optimize OpenCV facial landmarks', 'Deploy dashboard UI views'] : ['Awaiting task assignment']),
-          status: u.status || 'Active'
-        }));
+        const storedProj = localStorage.getItem('projects');
+        const allProj = storedProj ? JSON.parse(storedProj) : [];
+        const myProj = allProj.find(p => p.teamName && p.teamName.toLowerCase() === myTeamName.toLowerCase());
+        const projectTasks = myProj ? (myProj.tasks || []) : [];
+
+        return teamUsers.map(u => {
+          const userName = u.fullName || u.name || '';
+          const userEmail = u.email || '';
+          const matchedTasks = projectTasks.filter(t => 
+            t.assignedTo && 
+            (t.assignedTo.toLowerCase() === userName.toLowerCase() || 
+             t.assignedTo.toLowerCase() === userEmail.toLowerCase())
+          ).map(t => t.name);
+
+          return {
+            name: userName,
+            role: u.role,
+            email: userEmail,
+            githubUsername: u.githubUsername || userName.toLowerCase().replace(/\s+/g, '-'),
+            contribution: u.contribution !== undefined ? u.contribution : (u.role === 'Team Leader' ? 40 : Math.floor(Math.random() * 20) + 15),
+            currentTasks: matchedTasks.length > 0 ? matchedTasks : ['Awaiting task assignment'],
+            status: u.status || 'Active'
+          };
+        });
       }
     } catch (err) {
       console.error(err);
     }
-    return [
-      { name: 'Ankit Sharma', role: 'Team Leader', githubUsername: 'ankit-sharma', contribution: 40, currentTasks: ['Optimize OpenCV facial landmarks', 'Deploy dashboard UI views'], status: 'Active' },
-      { name: 'Sneha Reddy', role: 'Developer', githubUsername: 'sneha-reddy', contribution: 25, currentTasks: ['Write CNN WebGL tests', 'BLE pairing calibrations'], status: 'Active' },
-      { name: 'Amit Mehta', role: 'Developer', githubUsername: 'amit-mehta', contribution: 20, currentTasks: ['Device threshold settings', 'Setup API crawler clients'], status: 'Active' },
-      { name: 'Vikram Rao', role: 'Developer', githubUsername: 'vikram-rao', contribution: 15, currentTasks: ['Configure local cache fallbacks'], status: 'Active' }
-    ];
+    return [];
   });
+
+  React.useEffect(() => {
+    let active = true;
+    const fetchTeamMembers = async () => {
+      try {
+        const teamName = selectedProject?.teamName;
+        if (!teamName || teamName === 'Not Assigned') return;
+
+        const fetchedUsers = await api.listUsers() || [];
+        if (!active) return;
+
+        // Sync local storage so other tabs see it too
+        localStorage.setItem('registeredUsers', JSON.stringify(fetchedUsers));
+
+        let databaseTeams = [];
+        try {
+          databaseTeams = await api.listTeams() || [];
+        } catch (dbErr) {
+          console.warn('Failed to fetch teams list inside TeamMembers:', dbErr);
+        }
+
+        const isUserInTeam = (u, tName) => {
+          if (!u || !u.team || !tName) return false;
+          return u.team.split(',').map(t => t.trim().toLowerCase()).includes(tName.toLowerCase());
+        };
+
+        const matchedDbTeam = databaseTeams.find(dt => dt.name && dt.name.toLowerCase() === teamName.toLowerCase());
+        const dbLeaderName = matchedDbTeam ? matchedDbTeam.leaderName : null;
+
+        const leaderUser = fetchedUsers.find(u => 
+          (u.role === 'TEAM_LEADER' && dbLeaderName && u.name && u.name.toLowerCase() === dbLeaderName.toLowerCase()) ||
+          (u.role === 'TEAM_LEADER' && isUserInTeam(u, teamName))
+        );
+
+        const otherTeamUsers = fetchedUsers.filter(u => 
+          isUserInTeam(u, teamName) && 
+          (!leaderUser || u.id !== leaderUser.id)
+        );
+
+        const listToMap = [];
+        if (leaderUser) {
+          listToMap.push(leaderUser);
+        }
+        listToMap.push(...otherTeamUsers);
+
+        const projectTasks = selectedProject?.tasks || [];
+
+        const mappedMembers = listToMap.map(u => {
+          const userName = u.name || '';
+          const userEmail = u.email || '';
+          const matchedTasks = projectTasks.filter(t => 
+            t.assignedTo && 
+            (t.assignedTo.toLowerCase() === userName.toLowerCase() || 
+             t.assignedTo.toLowerCase() === userEmail.toLowerCase())
+          ).map(t => t.name);
+
+          return {
+            name: userName,
+            role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+            email: userEmail,
+            githubUsername: u.githubUsername || userName.toLowerCase().replace(/\s+/g, '-'),
+            contribution: u.contribution !== undefined ? u.contribution : (u.role === 'TEAM_LEADER' ? 40 : Math.floor(Math.random() * 20) + 15),
+            currentTasks: matchedTasks.length > 0 ? matchedTasks : ['Awaiting task assignment'],
+            status: u.status || 'Active'
+          };
+        });
+        
+        setMembers(mappedMembers);
+      } catch (err) {
+        console.error('Failed to load team members from database:', err);
+      }
+    };
+
+    fetchTeamMembers();
+    return () => {
+      active = false;
+    };
+  }, [selectedProject]);
 
   const [editingMember, setEditingMember] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -66,8 +155,26 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
             const registeredUsers = JSON.parse(stored);
             const idx = registeredUsers.findIndex(u => u.email.toLowerCase() === memberToDelete.email.toLowerCase());
             if (idx !== -1) {
-              registeredUsers[idx].team = 'Not Assigned';
-              localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
+               const matchedUser = registeredUsers[idx];
+               const teamName = selectedProject?.teamName || 'Not Assigned';
+               let updatedTeamString = 'Not Assigned';
+               if (matchedUser.team && matchedUser.team !== 'Not Assigned') {
+                 const existingTeams = matchedUser.team.split(',').map(t => t.trim());
+                 const filteredTeams = existingTeams.filter(t => t.toLowerCase() !== teamName.toLowerCase());
+                 updatedTeamString = filteredTeams.length > 0 ? filteredTeams.join(', ') : 'Not Assigned';
+               }
+               matchedUser.team = updatedTeamString;
+               localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
+
+               api.updateUserProfile(matchedUser.id, {
+                 name: matchedUser.fullName || matchedUser.name,
+                 email: matchedUser.email,
+                 role: matchedUser.role === 'Team Leader' ? 'TEAM_LEADER' : matchedUser.role === 'Mentor' ? 'MENTOR' : 'STUDENT',
+                 department: matchedUser.department || 'Computer Science & Engineering',
+                 salary: matchedUser.salary || 50000.0,
+                 joinDate: matchedUser.joinDate || new Date().toISOString().split('T')[0],
+                 team: updatedTeamString
+               }).catch(err => console.warn('Failed to sync deleted member profile:', err));
               
               setMembers(prev => prev.filter(m => m.email.toLowerCase() !== memberToDelete.email.toLowerCase()));
               
@@ -103,6 +210,17 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
           registeredUsers[idx].currentTasks = tasks.length > 0 ? tasks : ['Awaiting task assignment'];
 
           localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
+
+          const matchedUser = registeredUsers[idx];
+          api.updateUserProfile(matchedUser.id, {
+            name: matchedUser.fullName || matchedUser.name,
+            email: matchedUser.email,
+            role: matchedUser.role === 'Team Leader' ? 'TEAM_LEADER' : matchedUser.role === 'Mentor' ? 'MENTOR' : 'STUDENT',
+            department: matchedUser.department || 'Computer Science & Engineering',
+            salary: matchedUser.salary || 50000.0,
+            joinDate: matchedUser.joinDate || new Date().toISOString().split('T')[0],
+            team: matchedUser.team
+          }).catch(err => console.warn('Failed to sync edited member profile:', err));
 
           const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
           if (currentUser.email && currentUser.email.toLowerCase() === editingMember.email.toLowerCase()) {
@@ -162,6 +280,7 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
       const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
       const myUserRecord = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
       const myTeamName = myUserRecord ? myUserRecord.team : 'Not Assigned';
+      const targetTeamName = selectedProject?.teamName || myTeamName;
 
       // Check if user is already in the current team roster
       const isAlreadyInTeam = members.some(m => m.email?.toLowerCase() === formData.email.trim().toLowerCase());
@@ -181,13 +300,30 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
       }
 
       // Update existing user's team details
-      registeredUsers[existingUserIdx].team = myTeamName;
-      
-      // Update name to registration name if mismatched
       const matchedUser = registeredUsers[existingUserIdx];
+      let updatedTeamString = targetTeamName;
+      if (matchedUser.team && matchedUser.team !== 'Not Assigned') {
+        const existingTeams = matchedUser.team.split(',').map(t => t.trim());
+        if (!existingTeams.map(t => t.toLowerCase()).includes(targetTeamName.toLowerCase())) {
+          existingTeams.push(targetTeamName);
+        }
+        updatedTeamString = existingTeams.filter(t => t.toLowerCase() !== 'not assigned').join(', ');
+      }
+      matchedUser.team = updatedTeamString;
+      
       const displayName = matchedUser.fullName || matchedUser.name || formData.name;
 
       localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
+
+      api.updateUserProfile(matchedUser.id, {
+        name: matchedUser.fullName || matchedUser.name || displayName,
+        email: matchedUser.email,
+        role: matchedUser.role === 'Team Leader' ? 'TEAM_LEADER' : matchedUser.role === 'Mentor' ? 'MENTOR' : 'STUDENT',
+        department: matchedUser.department || 'Computer Science & Engineering',
+        salary: matchedUser.salary || 50000.0,
+        joinDate: matchedUser.joinDate || new Date().toISOString().split('T')[0],
+        team: updatedTeamString
+      }).catch(err => console.warn('Failed to sync assigned member profile:', err));
 
       setMembers(prev => [
         ...prev,
@@ -227,37 +363,45 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4">
-          {projects.map((proj) => (
-            <div 
-              key={proj.id} 
-              className="p-5 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-sm flex flex-col justify-between hover:border-primary/20 hover:shadow-glow-primary/5 transition-all duration-300 h-full text-left"
-            >
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-extrabold text-brand-text">{proj.name}</h4>
-                  <span className="text-[10px] text-brand-text-muted font-semibold block mt-0.5">{proj.domain}</span>
+        {projects.length === 0 ? (
+          <div className="p-8 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-sm text-center max-w-lg mt-6">
+            <p className="text-xs text-brand-text-muted leading-relaxed">
+              No assigned projects found. Please set up your team on the Dashboard or ensure your user profile is correctly assigned to a team.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4">
+            {projects.map((proj) => (
+              <div 
+                key={proj.id} 
+                className="p-5 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-sm flex flex-col justify-between hover:border-primary/20 hover:shadow-glow-primary/5 transition-all duration-300 h-full text-left"
+              >
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-extrabold text-brand-text">{proj.name}</h4>
+                    <span className="text-[10px] text-brand-text-muted font-semibold block mt-0.5">{proj.domain}</span>
+                  </div>
+                  <p className="text-xs text-brand-text-muted/80 line-clamp-2 leading-relaxed">
+                    {proj.description}
+                  </p>
                 </div>
-                <p className="text-xs text-brand-text-muted/80 line-clamp-2 leading-relaxed">
-                  {proj.description}
-                </p>
-              </div>
 
-              <div className="pt-4 border-t border-brand-border/40 mt-4 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 uppercase tracking-wider">
-                  {proj.status}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedProject(proj)}
-                  className="px-4 py-2 rounded-xl bg-primary text-white font-bold text-xs uppercase tracking-wider hover:shadow-glow-primary hover-lift transition-all duration-300 cursor-pointer"
-                >
-                  View Team
-                </button>
+                <div className="pt-4 border-t border-brand-border/40 mt-4 flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 uppercase tracking-wider">
+                    {proj.status}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProject(proj)}
+                    className="px-4 py-2 rounded-xl bg-primary text-white font-bold text-xs uppercase tracking-wider hover:shadow-glow-primary hover-lift transition-all duration-300 cursor-pointer"
+                  >
+                    View Team
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -301,16 +445,22 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
       </div>
 
       {/* Roster Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {members.map((member, idx) => (
-          <TeamMemberCard 
-            key={idx} 
-            member={member} 
-            onEdit={!readOnly ? () => handleEditMember(member) : null}
-            onDelete={!readOnly && member.role !== 'Team Leader' ? () => handleDeleteMember(member) : null}
-          />
-        ))}
-      </div>
+      {members.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {members.map((member, idx) => (
+            <TeamMemberCard 
+              key={idx} 
+              member={member} 
+              onEdit={!readOnly ? () => handleEditMember(member) : null}
+              onDelete={!readOnly && member.role !== 'Team Leader' ? () => handleDeleteMember(member) : null}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="p-12 text-center rounded-2xl border border-dashed border-brand-border bg-brand-card/20 text-brand-text-muted text-sm font-semibold select-none">
+          No team members registered under your team yet. Add new members to build your team!
+        </div>
+      )}
 
       {/* Add Member Modal */}
       {modalOpen && (

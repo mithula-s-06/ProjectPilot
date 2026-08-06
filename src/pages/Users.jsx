@@ -1,18 +1,24 @@
-import React, { useState } from 'react';
-import { FiSearch, FiUserCheck, FiUsers, FiAward } from 'react-icons/fi';
+import React, { useState, useEffect } from 'react';
+import { FiSearch, FiUserCheck, FiUsers, FiAward, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import UsersTable from '../components/UsersTable';
 
 const Users = ({ users = [], onViewUser, onDeleteUser }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleTab, setRoleTab] = useState('All'); // 'All', 'Student', 'Leader', 'Mentor'
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // Filter users based on search query and role category
   const filteredUsers = users.filter((user) => {
     // 1. Search Query Check
+    const nameVal = user.name || user.fullName || '';
+    const emailVal = user.email || '';
+    const teamVal = user.team || '';
+
     const matchesSearch = 
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.team.toLowerCase().includes(searchQuery.toLowerCase());
+      nameVal.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      emailVal.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      teamVal.toLowerCase().includes(searchQuery.toLowerCase());
       
     // 2. Role Category Tab Check
     let matchesTab = true;
@@ -26,6 +32,14 @@ const Users = ({ users = [], onViewUser, onDeleteUser }) => {
 
     return matchesSearch && matchesTab;
   });
+
+  // Reset page to 1 on filter/search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, roleTab]);
+
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+  const paginatedUsers = filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <div className="space-y-6 w-full text-left">
@@ -81,9 +95,38 @@ const Users = ({ users = [], onViewUser, onDeleteUser }) => {
       </div>
 
       {/* Main Table Card */}
-      <div className="p-4 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-md">
-        {filteredUsers.length > 0 ? (
-          <UsersTable users={filteredUsers} onViewUser={onViewUser} onDeleteUser={onDeleteUser} />
+      <div className="p-4 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-md space-y-4">
+        {paginatedUsers.length > 0 ? (
+          <>
+            <UsersTable users={paginatedUsers} onViewUser={onViewUser} onDeleteUser={onDeleteUser} />
+            
+            {/* Pagination controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-brand-border/40 pt-4 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="px-3.5 py-1.5 rounded-xl border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-200/50 dark:hover:bg-slate-800/50 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-all duration-300 inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <FiChevronLeft className="w-4 h-4" />
+                  <span>Back</span>
+                </button>
+                <span className="text-xs font-extrabold tracking-wider uppercase text-brand-text-muted">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="px-3.5 py-1.5 rounded-xl border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-200/50 dark:hover:bg-slate-800/50 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-all duration-300 inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Next</span>
+                  <FiChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="py-12 text-center text-sm text-brand-text-muted">
             No users found matching the search criteria.

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiX, FiArrowRight } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
+import { api } from '../utils/api';
 import StudentNavbar from '../components/StudentNavbar';
 import StudentSidebar from '../components/StudentSidebar';
 import ProjectCard from '../components/ProjectCard';
@@ -16,7 +17,7 @@ import TeamMembers from './TeamMembers';
 import ChatGuru from './ChatGuru';
 
 // Mock datasets
-import { studentProjects, studentNotifications } from '../utils/mockData';
+// Clear mock data imports
 
 const StudentDashboard = () => {
   const { navigateTo } = usePage();
@@ -38,7 +39,7 @@ const StudentDashboard = () => {
       const myTeamName = myUserRecord ? myUserRecord.team : 'Not Assigned';
 
       if (myTeamName && myTeamName !== 'Not Assigned') {
-        const sourceProjects = stored ? JSON.parse(stored) : studentProjects;
+        const sourceProjects = stored ? JSON.parse(stored) : [];
         const matchingProject = sourceProjects.find(p => 
           (p.teamName && p.teamName.toLowerCase() === myTeamName.toLowerCase() && p.name !== `${myTeamName} Project`)
         ) || sourceProjects.find(p => 
@@ -63,7 +64,7 @@ const StudentDashboard = () => {
           status: 'Active',
           healthDetails: { scores: [80], months: ['Jun'], aiSummary: 'Project is active.' },
           riskDetails: { riskLevel: 'Low Risk', factors: [], aiExplanation: 'No risk factors detected.', prediction: 0 },
-          mentor: 'Dr. Kumar',
+          mentor: 'Not Assigned',
           tasks: [],
           milestones: [],
           weeklyReports: [],
@@ -74,8 +75,13 @@ const StudentDashboard = () => {
     } catch (err) {
       console.error(err);
     }
-    return studentProjects;
+    return [];
   });
+
+  const [studentTeams, setStudentTeams] = useState([]);
+  const [activeTeamName, setActiveTeamName] = useState('Not Assigned');
+
+  const myProject = projects.find(p => p.teamName && activeTeamName && p.teamName.toLowerCase() === activeTeamName.toLowerCase()) || projects[0] || null;
 
   const [selectedProject, setSelectedProject] = useState(null);
   const [notifications, setNotifications] = useState(() => {
@@ -96,35 +102,45 @@ const StudentDashboard = () => {
           (n.targetTeam && myTeamName && n.targetTeam.toLowerCase() === myTeamName.toLowerCase())
         );
       } else {
-        const seeded = studentNotifications.map(n => ({ 
-          ...n, 
-          targetEmail: email,
-          targetTeam: myTeamName ? myTeamName.toLowerCase() : ''
-        }));
-        localStorage.setItem('notifications', JSON.stringify(seeded));
-        return seeded;
+        localStorage.setItem('notifications', JSON.stringify([]));
+        return [];
       }
     } catch (e) {
       console.error(e);
-      return studentNotifications;
+      return [];
     }
   });
   const [submittingTask, setSubmittingTask] = useState(null);
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  const saveProjectsToStorage = (updatedProjectsList) => {
+  const saveProjectsToStorage = async (updatedProjectsList) => {
     try {
       const stored = localStorage.getItem('projects');
+      let nextProj = [];
       if (stored) {
         const allProj = JSON.parse(stored);
-        const nextProj = allProj.map(p => {
+        nextProj = allProj.map(p => {
           const match = updatedProjectsList.find(up => up.id === p.id);
           return match ? match : p;
         });
-        localStorage.setItem('projects', JSON.stringify(nextProj));
+        updatedProjectsList.forEach(up => {
+          if (!nextProj.some(p => p.id === up.id)) {
+            nextProj.push(up);
+          }
+        });
       } else {
-        localStorage.setItem('projects', JSON.stringify(updatedProjectsList));
+        nextProj = updatedProjectsList;
+      }
+      localStorage.setItem('projects', JSON.stringify(nextProj));
+
+      // Async sync to MongoDB backend
+      for (const proj of updatedProjectsList) {
+        try {
+          await api.updateProject(proj.id, proj);
+        } catch (e) {
+          console.warn(`Background sync failed for project ${proj.id}:`, e);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -149,52 +165,74 @@ const StudentDashboard = () => {
           localStorage.setItem('currentUser', JSON.stringify(currentUser));
         }
 
+        const teamsList = myUserRecord.team.split(',').map(t => t.trim());
+        setStudentTeams(teamsList);
+        if (activeTeamName === 'Not Assigned' || !teamsList.includes(activeTeamName)) {
+          setActiveTeamName(teamsList[0]);
+        }
+
         const stored = localStorage.getItem('projects');
-        const sourceProjects = stored ? JSON.parse(stored) : studentProjects;
-        const matchingProject = sourceProjects.find(p => 
-          (p.teamName && p.teamName.toLowerCase() === myUserRecord.team.toLowerCase() && p.name !== `${myUserRecord.team} Project`)
-        ) || sourceProjects.find(p => 
-          (p.teamName && p.teamName.toLowerCase() === myUserRecord.team.toLowerCase()) ||
-          (myUserRecord.team === 'Team Alpha' && (p.name.includes('Attendance') || p.name.includes('Alpha'))) ||
-          (myUserRecord.team === 'Team Beta' && (p.name.includes('Health') || p.name.includes('Beta'))) ||
-          (myUserRecord.team === 'Team Gamma' && (p.name.includes('Plagiarism') || p.name.includes('Gamma'))) ||
-          (myUserRecord.team === 'Team Delta' && (p.name.includes('Irrigation') || p.name.includes('Delta'))) ||
-          (myUserRecord.team === 'Team Omega' && (p.name.includes('Voting') || p.name.includes('Blockchain') || p.name.includes('Omega'))) ||
-          (p.name && p.name.toLowerCase().includes(myUserRecord.team.toLowerCase()))
+        const sourceProjects = stored ? JSON.parse(stored) : [];
+        const matchingProjects = sourceProjects.filter(p => 
+          p.teamName && teamsList.some(t => t.toLowerCase() === p.teamName.toLowerCase())
         );
-        if (matchingProject) {
-          setProjects([matchingProject]);
+        if (matchingProjects.length > 0) {
+          setProjects(matchingProjects);
         }
       }
     } catch (e) {
       console.error(e);
     }
-  }, [activeTab]);
+  }, [activeTab, activeTeamName]);
 
   useEffect(() => {
-    if (projects && projects.length > 0) {
+    async function syncData() {
       try {
-        const stored = localStorage.getItem('projects');
-        if (stored) {
-          const allProj = JSON.parse(stored);
-          const nextProj = allProj.map(p => {
-            const match = projects.find(up => up.id === p.id);
-            return match ? match : p;
-          });
-          projects.forEach(up => {
-            if (!allProj.some(p => p.id === up.id)) {
-              nextProj.push(up);
+        const fetchedProj = await api.listProjects();
+        localStorage.setItem('projects', JSON.stringify(fetchedProj || []));
+
+        const fetchedUsers = await api.listUsers();
+        const mappedUsers = (fetchedUsers || []).map(u => ({
+          id: u.id,
+          fullName: u.name,
+          email: u.email,
+          role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+          collegeName: 'ProjectPilot University',
+          department: u.department || 'Computer Science & Engineering',
+          status: 'Active',
+          team: u.team || 'Not Assigned'
+        }));
+        localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
+
+        const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        const myUserRecord = mappedUsers.find(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
+        
+        if (myUserRecord) {
+          currentUser.team = myUserRecord.team || 'Not Assigned';
+          localStorage.setItem('currentUser', JSON.stringify(currentUser));
+
+          const myTeamName = myUserRecord.team;
+          if (myTeamName && myTeamName !== 'Not Assigned') {
+            const teamsList = myTeamName.split(',').map(t => t.trim());
+            setStudentTeams(teamsList);
+            if (activeTeamName === 'Not Assigned' || !teamsList.includes(activeTeamName)) {
+              setActiveTeamName(teamsList[0]);
             }
-          });
-          localStorage.setItem('projects', JSON.stringify(nextProj));
-        } else {
-          localStorage.setItem('projects', JSON.stringify(projects));
+            
+            const matchingProjects = (fetchedProj || []).filter(p => 
+              p.teamName && teamsList.some(t => t.toLowerCase() === p.teamName.toLowerCase())
+            );
+            setProjects(matchingProjects);
+          }
         }
-      } catch (e) {
-        console.error(e);
+      } catch (err) {
+        console.warn('Student syncData failed:', err);
       }
     }
-  }, [projects]);
+    syncData();
+  }, []);
+
+  // LocalStorage mapping useEffect removed to consolidate in saveProjectsToStorage
 
   useEffect(() => {
     if (selectedProject) {
@@ -328,7 +366,10 @@ const StudentDashboard = () => {
     setActiveTab('project-details');
   };
 
-  const handleSubmitReport = (projectId, reportData) => {
+  const handleSubmitReport = async (projectId, reportData) => {
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+
     const newReport = {
       id: `rep-${Date.now()}`,
       week: reportData.title || `Task Report: ${reportData.taskName}`,
@@ -340,62 +381,43 @@ const StudentDashboard = () => {
       fileUrl: reportData.fileUrl || '#'
     };
     
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id === projectId) {
-          const updatedTasks = (p.tasks || []).map((t) => {
-            if (t.name === reportData.taskName) {
-              return {
-                ...t,
-                reportSubmitted: true,
-                reportDetails: newReport,
-                isReassigned: false
-              };
-            }
-            return t;
-          });
-          const cleanReports = (p.weeklyReports || []).filter(r => 
-            !updatedTasks.some(t => t.name === reportData.taskName && t.reportDetails && t.reportDetails.id === r.id)
-          );
-          return {
-            ...p,
-            tasks: updatedTasks,
-            weeklyReports: [...cleanReports, newReport]
-          };
-        }
-        return p;
-      })
-    );
-
-    setSelectedProject((prev) => {
-      if (prev && prev.id === projectId) {
-        const updatedTasks = (prev.tasks || []).map((t) => {
-          if (t.name === reportData.taskName) {
-            return {
-              ...t,
-              reportSubmitted: true,
-              reportDetails: newReport,
-              isReassigned: false
-            };
-          }
-          return t;
-        });
-        const cleanReports = (prev.weeklyReports || []).filter(r => 
-          !updatedTasks.some(t => t.name === reportData.taskName && t.reportDetails && t.reportDetails.id === r.id)
-        );
+    const updatedTasks = (project.tasks || []).map((t) => {
+      if (t.name === reportData.taskName) {
         return {
-          ...prev,
-          tasks: updatedTasks,
-          weeklyReports: [...cleanReports, newReport]
+          ...t,
+          reportSubmitted: true,
+          reportDetails: newReport,
+          isReassigned: false
         };
       }
-      return prev;
+      return t;
     });
+    const cleanReports = (project.weeklyReports || []).filter(r => 
+      !updatedTasks.some(t => t.name === reportData.taskName && t.reportDetails && t.reportDetails.id === r.id)
+    );
+    
+    const updatedProj = {
+      ...project,
+      tasks: updatedTasks,
+      weeklyReports: [...cleanReports, newReport]
+    };
 
-    setActiveTab('project-details');
+    try {
+      const updated = await api.updateProject(projectId, updatedProj);
+      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      if (selectedProject && selectedProject.id === updated.id) {
+        setSelectedProject(updated);
+      }
+      setActiveTab('project-details');
+    } catch (err) {
+      console.error('Failed to submit task report to database:', err);
+    }
   };
 
-  const handleSubmitWeeklyReport = (projectId, reportData) => {
+  const handleSubmitWeeklyReport = async (projectId, reportData) => {
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+
     const newReport = {
       id: `rep-${Date.now()}`,
       week: reportData.weekNumber || 'Week 1',
@@ -407,51 +429,40 @@ const StudentDashboard = () => {
       fileUrl: '#'
     };
 
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id === projectId) {
-          return {
-            ...p,
-            weeklyReports: [...(p.weeklyReports || []), newReport]
-          };
-        }
-        return p;
-      })
-    );
+    const updatedProj = {
+      ...project,
+      weeklyReports: [...(project.weeklyReports || []), newReport]
+    };
 
-    setSelectedProject((prev) => {
-      if (prev && prev.id === projectId) {
-        return {
-          ...prev,
-          weeklyReports: [...(prev.weeklyReports || []), newReport]
-        };
+    try {
+      const updated = await api.updateProject(projectId, updatedProj);
+      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      if (selectedProject && selectedProject.id === updated.id) {
+        setSelectedProject(updated);
       }
-      return prev;
-    });
+    } catch (err) {
+      console.error('Failed to submit weekly report to database:', err);
+    }
   };
 
-  const handleUpdateTaskReports = (projectId, updatedTasks) => {
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id === projectId) {
-          return {
-            ...p,
-            tasks: updatedTasks
-          };
-        }
-        return p;
-      })
-    );
+  const handleUpdateTaskReports = async (projectId, updatedTasks) => {
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
 
-    setSelectedProject((prev) => {
-      if (prev && prev.id === projectId) {
-        return {
-          ...prev,
-          tasks: updatedTasks
-        };
+    const updatedProj = {
+      ...project,
+      tasks: updatedTasks
+    };
+
+    try {
+      const updated = await api.updateProject(projectId, updatedProj);
+      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      if (selectedProject && selectedProject.id === updated.id) {
+        setSelectedProject(updated);
       }
-      return prev;
-    });
+    } catch (err) {
+      console.error('Failed to update task reports in database:', err);
+    }
   };
 
   // Render main dashboard tab panel
@@ -463,13 +474,43 @@ const StudentDashboard = () => {
       <div className="space-y-8 animate-fade-in text-left">
         
         {/* Welcome Banner */}
-        <div>
-          <h2 className="text-xl sm:text-2xl font-extrabold text-brand-text mb-1 tracking-tight">
-            Welcome 👋
-          </h2>
-          <p className="text-xs sm:text-sm text-brand-text-muted">
-            Continue your project journey with AI-powered guidance.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-brand-text mb-1 tracking-tight">
+              Welcome 👋
+            </h2>
+            <p className="text-xs sm:text-sm text-brand-text-muted">
+              Continue your project journey with AI-powered guidance.
+            </p>
+          </div>
+
+          {/* Active Project Switcher Dropdown */}
+          {studentTeams.length > 1 && (
+            <div className="flex items-center gap-2 p-2 rounded-xl border border-brand-border bg-brand-card shadow-sm self-start sm:self-auto">
+              <span className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider pl-1">
+                Active Team:
+              </span>
+              <select
+                value={activeTeamName}
+                onChange={(e) => {
+                  const selectedTeam = e.target.value;
+                  setActiveTeamName(selectedTeam);
+                  
+                  const matchedProj = projects.find(p => p.teamName && p.teamName.toLowerCase() === selectedTeam.toLowerCase());
+                  if (matchedProj) {
+                    setSelectedProject(matchedProj);
+                  }
+                }}
+                className="text-xs font-bold bg-transparent text-brand-text border-none focus:ring-0 focus:outline-none cursor-pointer pr-8"
+              >
+                {studentTeams.map((team) => (
+                  <option key={team} value={team} className="bg-brand-card text-brand-text">
+                    {team}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* My Projects Header */}
@@ -510,30 +551,32 @@ const StudentDashboard = () => {
       case 'projects':
         return <Projects projects={projects} onViewProject={handleViewProject} />;
       case 'project-details':
+        const activeProj = selectedProject || myProject;
         return (
           <ProjectDetails 
-            project={selectedProject} 
+            project={activeProj} 
             onBack={() => setActiveTab('projects')} 
             onNavigateToSubmitReport={(task) => {
               setSubmittingTask(task);
               setActiveTab('submit-report');
             }}
             onNavigateToEditReport={(task) => {
-              const freshTask = selectedProject?.tasks?.find(t => t.id === task.id) || task;
+              const freshTask = activeProj?.tasks?.find(t => t.id === task.id) || task;
               setSubmittingTask(freshTask);
               setActiveTab('edit-report');
             }}
             onSubmitWeeklyReport={handleSubmitWeeklyReport}
-            onUpdateTasks={(updatedTasks) => handleUpdateTaskReports(selectedProject.id, updatedTasks)}
+            onUpdateTasks={(updatedTasks) => handleUpdateTaskReports(activeProj.id, updatedTasks)}
           />
         );
       case 'submit-report':
+        const submitProj = selectedProject || myProject;
         return (
           <SubmitReport 
             task={submittingTask}
             onBack={() => setActiveTab('project-details')}
             onSubmit={(reportData) => {
-              handleSubmitReport(selectedProject.id, {
+              handleSubmitReport(submitProj.id, {
                 taskName: submittingTask.name,
                 title: reportData.title,
                 description: reportData.description,
@@ -545,6 +588,7 @@ const StudentDashboard = () => {
           />
         );
       case 'edit-report':
+        const editProj = selectedProject || myProject;
         return (
           <SubmitReport 
             task={submittingTask}
@@ -557,7 +601,7 @@ const StudentDashboard = () => {
             }}
             onBack={() => setActiveTab('project-details')}
             onSubmit={(reportData) => {
-              const updatedTasks = selectedProject.tasks.map(t => {
+              const updatedTasks = editProj.tasks.map(t => {
                 if (t.id === submittingTask.id) {
                   return {
                     ...t,
@@ -573,7 +617,7 @@ const StudentDashboard = () => {
                 }
                 return t;
               });
-              handleUpdateTaskReports(selectedProject.id, updatedTasks);
+              handleUpdateTaskReports(editProj.id, updatedTasks);
               setActiveTab('project-details');
             }}
           />
@@ -635,7 +679,7 @@ const StudentDashboard = () => {
               onClick={() => setMobileSidebarOpen(false)}
               className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity duration-300"
             />
-            <aside className="md:hidden fixed inset-y-0 left-0 w-64 bg-brand-card/95 border-r border-brand-border p-5 z-50 flex flex-col justify-between shadow-2xl animate-slide-right">
+            <aside className="md:hidden fixed inset-y-0 left-0 w-64 bg-brand-card border-r border-brand-border p-5 z-50 flex flex-col justify-between shadow-2xl animate-slide-right">
               <div className="space-y-6">
                 
                 {/* Brand title */}

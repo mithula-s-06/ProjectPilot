@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiX, FiArrowRight } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
+import { api } from '../utils/api';
 import TeamLeaderNavbar from '../components/TeamLeaderNavbar';
 import TeamLeaderSidebar from '../components/TeamLeaderSidebar';
 import AIInsights from '../components/AIInsights';
@@ -20,7 +21,7 @@ import SubmitReport from './SubmitReport';
 import ChatGuru from './ChatGuru';
 
 // Mock Notification list
-import { initialNotifications } from '../utils/mockData';
+// Clear mock data imports
 
 const TeamLeaderDashboard = () => {
   const { navigateTo } = usePage();
@@ -31,125 +32,6 @@ const TeamLeaderDashboard = () => {
 
   // Set up projects dynamically based on the team the leader leads
   const [projects, setProjects] = useState(() => {
-    const allMockProjects = [
-      {
-        id: 'proj-1',
-        name: 'Smart Attendance System',
-        domain: 'Computer Vision / OpenCV',
-        description: 'AI-powered classroom attendance register using facial recognition models.',
-        phase: 'Integration Phase',
-        mentor: 'Dr. Kumar',
-        health: 94,
-        progress: 82,
-        status: 'Active',
-        healthDetails: {
-          scores: [90, 92, 94],
-          months: ['Apr', 'May', 'Jun'],
-          aiSummary: 'GitHub commits and reports are active. Model inference latency is stabilized.'
-        },
-        riskDetails: {
-          riskLevel: 'Low Risk',
-          factors: [],
-          aiExplanation: 'Active indicators stable. Zero warnings.',
-          prediction: 2
-        },
-        tasks: [
-          { id: 't1-1', name: 'Optimize OpenCV facial landmarks', assignedDate: '2026-06-15', deadline: '2026-06-25', priority: 'High', status: 'Completed' },
-          { id: 't1-2', name: 'Deploy dashboard UI views', assignedDate: '2026-06-20', deadline: '2026-07-05', priority: 'Medium', status: 'In Progress' }
-        ],
-        milestones: [
-          { id: 'm1-1', name: 'Facial Mesh Detection accuracy 95%', dueDate: '2026-06-22', progress: 100, status: 'Completed' },
-          { id: 'm1-2', name: 'WASM edge compilation tests', dueDate: '2026-07-10', progress: 40, status: 'Pending' }
-        ],
-        weeklyReports: [
-          { id: 'w1-1', week: 'Week 1 (Mesh Fitting)', submissionStatus: 'Verified', submittedDate: '2026-06-21', remarks: 'Good accuracy logs.', fileUrl: '#' }
-        ],
-        github: { commits: 142, prs: 18, issuesClosed: 14, contributionPercentage: 40, repoUrl: 'https://github.com/projectpilot/smart-attendance' },
-        mentorFeedback: { latestFeedback: 'Accuracy rates verified. Optimizations completed.', date: '2026-06-21', allComments: [] }
-      },
-      {
-        id: 'proj-2',
-        name: 'Deep Learning Image Segmentation',
-        domain: 'Deep Learning / U-Net',
-        description: 'Medical image cell boundary segmentation using modified neural networks.',
-        phase: 'Testing Phase',
-        mentor: 'Prof. Sharma',
-        health: 88,
-        progress: 64,
-        status: 'Active',
-        healthDetails: {
-          scores: [80, 85, 88],
-          months: ['Apr', 'May', 'Jun'],
-          aiSummary: 'Weekly report completion rate is 100%. Code revisions are verified.'
-        },
-        riskDetails: {
-          riskLevel: 'Low Risk',
-          factors: [],
-          aiExplanation: 'Minor delay in sprint milestones. Overall risk is low.',
-          prediction: 4
-        },
-        tasks: [],
-        milestones: [],
-        weeklyReports: [],
-        github: { commits: 96, prs: 10, issuesClosed: 8, contributionPercentage: 25, repoUrl: 'https://github.com/projectpilot/deep-segmentation' },
-        mentorFeedback: { latestFeedback: 'Validation loss graph looks consistent. Proceed with cloud tests.', date: '2026-06-19', allComments: [] }
-      },
-      {
-        id: 'proj-3',
-        name: 'IoT Home Gateway Hub',
-        domain: 'IoT / Hardware',
-        description: 'Distributed smart home nodes coordinating gateway sensor packets.',
-        phase: 'Development Phase',
-        mentor: 'Dr. Priya',
-        health: 76,
-        progress: 48,
-        status: 'Active',
-        healthDetails: {
-          scores: [85, 80, 76],
-          months: ['Apr', 'May', 'Jun'],
-          aiSummary: 'Decline due to low hardware activity this week. BLE pairing is in progress.'
-        },
-        riskDetails: {
-          riskLevel: 'Medium Risk',
-          factors: ['Low Git Commits'],
-          aiExplanation: 'Low commit volume from dev nodes. Sprints have minor bottlenecks.',
-          prediction: 15
-        },
-        tasks: [],
-        milestones: [],
-        weeklyReports: [],
-        github: { commits: 64, prs: 6, issuesClosed: 4, contributionPercentage: 20, repoUrl: 'https://github.com/projectpilot/iot-home-gateway' },
-        mentorFeedback: { latestFeedback: 'Address BLE latency spikes in gateway pairing.', date: '2026-06-18', allComments: [] }
-      },
-      {
-        id: 'proj-4',
-        name: 'Edge Security Diagnostics',
-        domain: 'Cybersecurity / Router',
-        description: 'Decentralized hardware firewall security log crawler.',
-        phase: 'Planning Phase',
-        mentor: 'Not Assigned',
-        health: 50,
-        progress: 20,
-        status: 'Active',
-        healthDetails: {
-          scores: [60, 55, 50],
-          months: ['Apr', 'May', 'Jun'],
-          aiSummary: 'Decline due to two missed task deadlines and pending mentor feedback.'
-        },
-        riskDetails: {
-          riskLevel: 'High Risk',
-          factors: ['Missed Deadlines', 'Low Activity'],
-          aiExplanation: 'Unassigned mentor. Missed two weekly milestones. Immediate action required.',
-          prediction: 42
-        },
-        tasks: [],
-        milestones: [],
-        weeklyReports: [],
-        github: { commits: 28, prs: 2, issuesClosed: 1, contributionPercentage: 15, repoUrl: 'https://github.com/projectpilot/edge-security' },
-        mentorFeedback: { latestFeedback: 'Awaiting first document submission.', date: '--', allComments: [] }
-      }
-    ];
-
     try {
       const stored = localStorage.getItem('projects');
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
@@ -158,7 +40,7 @@ const TeamLeaderDashboard = () => {
       const myTeamName = myUserRecord ? myUserRecord.team : 'Not Assigned';
 
       if (myTeamName && myTeamName !== 'Not Assigned') {
-        const sourceProjects = stored ? JSON.parse(stored) : allMockProjects;
+        const sourceProjects = stored ? JSON.parse(stored) : [];
         const matchingProject = sourceProjects.find(p => 
           (p.teamName && p.teamName.toLowerCase() === myTeamName.toLowerCase()) ||
           (myTeamName === 'Team Alpha' && (p.name.includes('Attendance') || p.name.includes('Alpha'))) ||
@@ -178,7 +60,7 @@ const TeamLeaderDashboard = () => {
           domain: 'Development / Research',
           description: `Active project dashboard for ${myTeamName}.`,
           phase: 'Planning Phase',
-          mentor: 'Dr. Kumar',
+          mentor: 'Not Assigned',
           health: 80,
           progress: 10,
           status: 'Active',
@@ -198,23 +80,39 @@ const TeamLeaderDashboard = () => {
     return [];
   });
 
-  const myTeamName = (() => {
+  const [myTeamName, setMyTeamName] = useState(() => {
     try {
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
       const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
       const myUserRecord = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
-      return myUserRecord ? myUserRecord.team : 'Not Assigned';
-    } catch (e) {
+      return myUserRecord && myUserRecord.team ? myUserRecord.team : 'Not Assigned';
+    } catch {
       return 'Not Assigned';
     }
-  })();
-  const myProject = projects[0] || null;
-
+  });
   const [selectedProject, setSelectedProject] = useState(null);
+  const [myTeamsList, setMyTeamsList] = useState([]);
+  const myProject = selectedProject || projects[0] || null;
+
+  const activeMembers = React.useMemo(() => {
+    try {
+      const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+      if (myTeamName && myTeamName !== 'Not Assigned') {
+        return registeredUsers.filter(u => u.team === myTeamName);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  }, [myTeamName]);
+
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [submittingTask, setSubmittingTask] = useState(null);
 
-  const handleSubmitTaskReport = (projectId, reportData) => {
+  const handleSubmitTaskReport = async (projectId, reportData) => {
+    const proj = projects.find(p => p.id === projectId);
+    if (!proj) return;
+
     const newReport = {
       id: `rep-${Date.now()}`,
       week: reportData.title || `Task Report: ${reportData.taskName}`,
@@ -225,64 +123,39 @@ const TeamLeaderDashboard = () => {
       fileSize: reportData.fileSize,
       fileUrl: reportData.fileUrl || '#'
     };
-    
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id === projectId) {
-          const updatedTasks = (p.tasks || []).map((t) => {
-            if (t.name === reportData.taskName) {
-              return {
-                ...t,
-                reportSubmitted: true,
-                reportDetails: newReport,
-                isReassigned: false
-              };
-            }
-            return t;
-          });
-          
-          const cleanReports = (p.weeklyReports || []).filter(r => 
-            !updatedTasks.some(t => t.name === reportData.taskName && t.reportDetails && t.reportDetails.id === r.id)
-          );
 
-          return {
-            ...p,
-            tasks: updatedTasks,
-            weeklyReports: [...cleanReports, newReport]
-          };
-        }
-        return p;
-      })
-    );
-
-    setSelectedProject((prev) => {
-      if (prev && prev.id === projectId) {
-        const updatedTasks = (prev.tasks || []).map((t) => {
-          if (t.name === reportData.taskName) {
-            return {
-              ...t,
-              reportSubmitted: true,
-              reportDetails: newReport,
-              isReassigned: false
-            };
-          }
-          return t;
-        });
-        
-        const cleanReports = (prev.weeklyReports || []).filter(r => 
-          !updatedTasks.some(t => t.name === reportData.taskName && t.reportDetails && t.reportDetails.id === r.id)
-        );
-
+    const updatedTasks = (proj.tasks || []).map((t) => {
+      if (t.name === reportData.taskName) {
         return {
-          ...prev,
-          tasks: updatedTasks,
-          weeklyReports: [...cleanReports, newReport]
+          ...t,
+          reportSubmitted: true,
+          reportDetails: newReport,
+          isReassigned: false
         };
       }
-      return prev;
+      return t;
     });
 
-    setActiveTab('project-details');
+    const cleanReports = (proj.weeklyReports || []).filter(r => 
+      !updatedTasks.some(t => t.name === reportData.taskName && t.reportDetails && t.reportDetails.id === r.id)
+    );
+
+    const updatedProj = {
+      ...proj,
+      tasks: updatedTasks,
+      weeklyReports: [...cleanReports, newReport]
+    };
+
+    try {
+      const updated = await api.updateProject(projectId, updatedProj);
+      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      if (selectedProject && selectedProject.id === updated.id) {
+        setSelectedProject(updated);
+      }
+      setActiveTab('project-details');
+    } catch (err) {
+      console.error('Failed to submit task report on backend:', err);
+    }
   };
 
   const [notifications, setNotifications] = useState(() => {
@@ -303,105 +176,44 @@ const TeamLeaderDashboard = () => {
           (n.targetTeam && myTeamName && n.targetTeam.toLowerCase() === myTeamName.toLowerCase())
         );
       } else {
-        const seeded = initialNotifications.map(n => ({ 
-          ...n, 
-          targetEmail: email,
-          targetTeam: myTeamName ? myTeamName.toLowerCase() : ''
-        }));
-        localStorage.setItem('notifications', JSON.stringify(seeded));
-        return seeded;
+        localStorage.setItem('notifications', JSON.stringify([]));
+        return [];
       }
     } catch (e) {
       console.error(e);
-      return initialNotifications;
+      return [];
     }
   });
 
-  const [newTeamNameInput, setNewTeamNameInput] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-  const [teamNameUpdated, setTeamNameUpdated] = useState(false);
-
-  const handleCreateTeamSubmit = () => {
-    if (!newTeamNameInput.trim()) {
-      return;
-    }
-
-    try {
-      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-      const oldTeamName = currentUser.team;
-      const newTeamName = newTeamNameInput.trim();
-      const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-      const userIdx = registeredUsers.findIndex(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
-
-      if (userIdx !== -1) {
-        registeredUsers[userIdx].team = newTeamName;
-        
-        if (oldTeamName && oldTeamName !== 'Not Assigned') {
-          registeredUsers.forEach(u => {
-            if (u.team && u.team.toLowerCase() === oldTeamName.toLowerCase()) {
-              u.team = newTeamName;
-            }
-          });
-        }
-
-        localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
-        
-        currentUser.team = newTeamName;
-        localStorage.setItem('currentUser', JSON.stringify(currentUser));
-      }
-
-      setSuccessMsg(`Team "${newTeamNameInput}" was successfully created!`);
-      
-      setProjects([{
-        id: `proj-${Date.now()}`,
-        name: `${newTeamNameInput.trim()} Project`,
-        domain: 'Development / Research',
-        description: `Active project dashboard for ${newTeamNameInput.trim()}.`,
-        phase: 'Planning Phase',
-        mentor: 'Not Assigned',
-        health: 80,
-        progress: 10,
-        status: 'Active',
-        healthDetails: { scores: [80], months: ['Jun'], aiSummary: 'Project setup completed successfully.' },
-        riskDetails: { riskLevel: 'Low Risk', factors: [], aiExplanation: 'Initial project setup stable.', prediction: 0 },
-        tasks: [],
-        milestones: [],
-        weeklyReports: [],
-        github: { commits: 0, prs: 0, issuesClosed: 0, contributionPercentage: 100 },
-        mentorFeedback: { latestFeedback: 'No feedback submitted yet.', date: '--', allComments: [] }
-      }]);
-
-      setNewTeamNameInput('');
-      setTeamNameUpdated(true);
-
-      setTimeout(() => {
-        setSuccessMsg('');
-      }, 3500);
-
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  const saveProjectsToStorage = (updatedProjectsList) => {
+  const saveProjectsToStorage = async (updatedProjectsList) => {
     try {
       const stored = localStorage.getItem('projects');
+      let nextProj = [];
       if (stored) {
         const allProj = JSON.parse(stored);
-        const nextProj = allProj.map(p => {
+        nextProj = allProj.map(p => {
           const match = updatedProjectsList.find(up => up.id === p.id);
           return match ? match : p;
         });
         updatedProjectsList.forEach(up => {
-          if (!allProj.some(p => p.id === up.id)) {
+          if (!nextProj.some(p => p.id === up.id)) {
             nextProj.push(up);
           }
         });
-        localStorage.setItem('projects', JSON.stringify(nextProj));
       } else {
-        localStorage.setItem('projects', JSON.stringify(updatedProjectsList));
+        nextProj = updatedProjectsList;
+      }
+      localStorage.setItem('projects', JSON.stringify(nextProj));
+
+      // Async sync to MongoDB backend
+      for (const proj of updatedProjectsList) {
+        try {
+          await api.updateProject(proj.id, proj);
+        } catch (e) {
+          console.warn(`Background sync failed for project ${proj.id}:`, e);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -415,40 +227,80 @@ const TeamLeaderDashboard = () => {
   }, [projects]);
 
   useEffect(() => {
-    const handleFocus = () => {
+    const handleFocus = async () => {
       try {
-        const stored = localStorage.getItem('projects');
-        const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-        const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-        const myUserRecord = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
-        const myTeamName = myUserRecord ? myUserRecord.team : 'Not Assigned';
+        const fetchedProj = await api.listProjects();
+        localStorage.setItem('projects', JSON.stringify(fetchedProj || []));
 
-        if (myTeamName && myTeamName !== 'Not Assigned' && stored) {
-          const sourceProjects = JSON.parse(stored);
-          const matchingProject = sourceProjects.find(p => 
-            (p.teamName && p.teamName.toLowerCase() === myTeamName.toLowerCase() && p.name !== `${myTeamName} Project`)
-          ) || sourceProjects.find(p => 
-            (p.teamName && p.teamName.toLowerCase() === myTeamName.toLowerCase()) ||
-            (myTeamName === 'Team Alpha' && (p.name.includes('Attendance') || p.name.includes('Alpha'))) ||
-            (myTeamName === 'Team Beta' && (p.name.includes('Health') || p.name.includes('Beta'))) ||
-            (myTeamName === 'Team Gamma' && (p.name.includes('Plagiarism') || p.name.includes('Gamma'))) ||
-            (myTeamName === 'Team Delta' && (p.name.includes('Irrigation') || p.name.includes('Delta'))) ||
-            (myTeamName === 'Team Omega' && (p.name.includes('Voting') || p.name.includes('Blockchain') || p.name.includes('Omega'))) ||
-            (p.name && p.name.toLowerCase().includes(myTeamName.toLowerCase()))
-          );
-          if (matchingProject) {
-            setProjects([matchingProject]);
-          }
+        const fetchedUsers = await api.listUsers();
+        const mappedUsers = (fetchedUsers || []).map(u => ({
+          id: u.id,
+          fullName: u.name,
+          email: u.email,
+          role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+          collegeName: 'ProjectPilot University',
+          department: u.department || 'Computer Science & Engineering',
+          status: 'Active',
+          team: u.team || 'Not Assigned'
+        }));
+        localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
+
+        const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        const myUserRecord = mappedUsers.find(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
+        const fetchedTeamName = myUserRecord && myUserRecord.team ? myUserRecord.team : 'Not Assigned';
+        setMyTeamName(fetchedTeamName);
+
+        // Fetch backend teams to populate teams this Team Leader leads
+        let databaseTeams = [];
+        try {
+          databaseTeams = await api.listTeams() || [];
+        } catch (dbErr) {
+          console.warn('Failed to list teams inside TeamLeaderDashboard:', dbErr);
+        }
+        
+        const myName = currentUser.fullName || currentUser.name || '';
+        const filteredMyTeams = databaseTeams.filter(t => 
+          (t.leaderName && myName && t.leaderName.toLowerCase() === myName.toLowerCase()) ||
+          (t.name && fetchedTeamName && t.name.toLowerCase() === fetchedTeamName.toLowerCase())
+        );
+        setMyTeamsList(filteredMyTeams);
+
+        // Sync currentUser local storage team value
+        if (currentUser.team !== fetchedTeamName) {
+          currentUser.team = fetchedTeamName;
+          localStorage.setItem('currentUser', JSON.stringify(currentUser));
         }
 
-        const storedNotifs = localStorage.getItem('notifications');
-        if (storedNotifs && currentUser.email) {
-          const parsed = JSON.parse(storedNotifs);
-          setNotifications(parsed.filter(n => 
-            !n.targetEmail || 
-            n.targetEmail.toLowerCase() === currentUser.email.toLowerCase() ||
-            (n.targetTeam && myTeamName && n.targetTeam.toLowerCase() === myTeamName.toLowerCase())
-          ));
+        // Find all projects belonging to any of the Team Leader's teams
+        const myTeamNames = filteredMyTeams.map(t => t.name.toLowerCase());
+        const matchingProjects = (fetchedProj || []).filter(p => 
+          p.teamName && myTeamNames.includes(p.teamName.toLowerCase())
+        );
+
+        if (matchingProjects.length > 0) {
+          setProjects(matchingProjects);
+        } else if (fetchedTeamName && fetchedTeamName !== 'Not Assigned') {
+          // Set default project fallback if team exists but project is not declared yet
+          setProjects([{
+            id: `proj-${Date.now()}`,
+            name: `${fetchedTeamName} Project`,
+            domain: 'Development / Research',
+            description: `Active project dashboard for ${fetchedTeamName}.`,
+            phase: 'Planning Phase',
+            mentor: 'Not Assigned',
+            health: 80,
+            progress: 10,
+            status: 'Active',
+            healthDetails: { scores: [80], months: ['Jun'], aiSummary: 'Project setup completed successfully.' },
+            riskDetails: { riskLevel: 'Low Risk', factors: [], aiExplanation: 'Initial project setup stable.', prediction: 0 },
+            tasks: [],
+            milestones: [],
+            weeklyReports: [],
+            github: { commits: 0, prs: 0, issuesClosed: 0, contributionPercentage: 100 },
+            mentorFeedback: { latestFeedback: 'No feedback submitted yet.', date: '--', allComments: [] }
+          }]);
+        } else {
+          setProjects([]);
         }
       } catch (err) {
         console.error(err);
@@ -460,6 +312,7 @@ const TeamLeaderDashboard = () => {
         const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
         const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
         const myUserRecord = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
+        const myName = myUserRecord ? myUserRecord.name : '';
         const myTeamName = myUserRecord ? myUserRecord.team : 'Not Assigned';
 
         if (e.key === 'notifications' && e.newValue) {
@@ -475,28 +328,28 @@ const TeamLeaderDashboard = () => {
 
         if (e.key === 'projects' && e.newValue) {
           const allProj = JSON.parse(e.newValue);
-          if (myTeamName && myTeamName !== 'Not Assigned') {
-            const matchingProject = allProj.find(p => 
-              (p.teamName && p.teamName.toLowerCase() === myTeamName.toLowerCase() && p.name !== `${myTeamName} Project`)
-            ) || allProj.find(p => 
-              (p.teamName && p.teamName.toLowerCase() === myTeamName.toLowerCase()) ||
-              (myTeamName === 'Team Alpha' && (p.name.includes('Attendance') || p.name.includes('Alpha'))) ||
-              (myTeamName === 'Team Beta' && (p.name.includes('Health') || p.name.includes('Beta'))) ||
-              (myTeamName === 'Team Gamma' && (p.name.includes('Plagiarism') || p.name.includes('Gamma'))) ||
-              (myTeamName === 'Team Delta' && (p.name.includes('Irrigation') || p.name.includes('Delta'))) ||
-              (myTeamName === 'Team Omega' && (p.name.includes('Voting') || p.name.includes('Blockchain') || p.name.includes('Omega'))) ||
-              (p.name && p.name.toLowerCase().includes(myTeamName.toLowerCase()))
-            );
-            if (matchingProject) {
-              setProjects([matchingProject]);
-            }
-          }
+          
+          let databaseTeams = [];
+          try {
+            databaseTeams = JSON.parse(localStorage.getItem('teams') || '[]');
+           } catch {}
+
+          const myTeamNames = databaseTeams.filter(t => 
+            (t.leaderName && myName && t.leaderName.toLowerCase() === myName.toLowerCase()) ||
+            (t.name && myTeamName && t.name.toLowerCase() === myTeamName.toLowerCase())
+          ).map(t => t.name.toLowerCase());
+
+          const matchingProjects = allProj.filter(p => 
+            p.teamName && myTeamNames.includes(p.teamName.toLowerCase())
+          );
+          setProjects(matchingProjects);
         }
       } catch (err) {
         console.error(err);
       }
     };
 
+    handleFocus();
     window.addEventListener('focus', handleFocus);
     window.addEventListener('storage', handleStorageChange);
     return () => {
@@ -529,48 +382,77 @@ const TeamLeaderDashboard = () => {
     setActiveTab('project-details');
   };
 
-  const handleUpdateTasks = (updatedTasks) => {
-    setProjects(prev => prev.map((p, idx) => {
-      if (idx === 0) {
-        const cleanReports = (p.weeklyReports || []).filter(r => 
-          !updatedTasks.some(t => t.reportDetails && t.reportDetails.id === r.id)
-        );
-        const activeTaskReports = updatedTasks
-          .filter((t) => t.reportSubmitted && t.reportDetails)
-          .map((t) => t.reportDetails);
+  const handleUpdateTasks = async (updatedTasks, targetProjectId) => {
+    const pId = targetProjectId || (selectedProject ? selectedProject.id : (projects[0] ? projects[0].id : null));
+    if (!pId) return;
+    const proj = projects.find(p => p.id === pId);
+    if (!proj) return;
+    const cleanReports = (proj.weeklyReports || []).filter(r => 
+      !updatedTasks.some(t => t.reportDetails && t.reportDetails.id === r.id)
+    );
+    const activeTaskReports = updatedTasks
+      .filter((t) => t.reportSubmitted && t.reportDetails)
+      .map((t) => t.reportDetails);
 
-        const nextP = { 
-          ...p, 
-          tasks: updatedTasks,
-          weeklyReports: [...cleanReports, ...activeTaskReports]
-        };
-        if (selectedProject && selectedProject.id === p.id) {
-          setSelectedProject(nextP);
-        }
-        return nextP;
+    const nextP = { 
+      ...proj, 
+      tasks: updatedTasks,
+      weeklyReports: [...cleanReports, ...activeTaskReports]
+    };
+
+    try {
+      const updated = await api.updateProject(pId, nextP);
+      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      if (selectedProject && selectedProject.id === updated.id) {
+        setSelectedProject(updated);
       }
-      return p;
-    }));
+    } catch (err) {
+      console.error('Failed to sync updated tasks to database:', err);
+    }
   };
 
-  const handleUpdateMilestones = (updatedMilestones) => {
-    setProjects(prev => prev.map((p, idx) => {
-      if (idx === 0) {
-        const nextP = { ...p, milestones: updatedMilestones };
-        if (selectedProject && selectedProject.id === p.id) {
-          setSelectedProject(nextP);
-        }
-        return nextP;
+  const handleUpdateMilestones = async (updatedMilestones, targetProjectId) => {
+    const pId = targetProjectId || (selectedProject ? selectedProject.id : (projects[0] ? projects[0].id : null));
+    if (!pId) return;
+    const proj = projects.find(p => p.id === pId);
+    if (!proj) return;
+    const nextP = { ...proj, milestones: updatedMilestones };
+
+    try {
+      const updated = await api.updateProject(pId, nextP);
+      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      if (selectedProject && selectedProject.id === updated.id) {
+        setSelectedProject(updated);
       }
-      return p;
-    }));
+    } catch (err) {
+      console.error('Failed to sync updated milestones to database:', err);
+    }
   };
 
-  const handleCreateProject = (newProj) => {
-    setProjects(prev => [newProj, ...prev]);
+  const handleCreateProject = async (newProj) => {
+    try {
+      const created = await api.createProject(newProj);
+      setProjects(prev => [created, ...prev]);
+
+      // Automatically register the team in the teams collection!
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      await api.createTeam({
+        name: created.teamName,
+        projectId: created.id,
+        projectName: created.name,
+        mentorName: 'Not Assigned',
+        health: 100,
+        leaderName: currentUser.fullName || currentUser.name,
+        membersCount: 1,
+        status: 'Good',
+        rank: 1
+      });
+    } catch (err) {
+      console.error('Failed to create project/team on backend:', err);
+    }
   };
 
-  const handleEditProject = (updatedProj) => {
+  const handleEditProject = async (updatedProj) => {
     const oldProj = projects.find(p => p.id === updatedProj.id);
     const oldTeamName = oldProj ? oldProj.teamName : '';
     const newTeamName = updatedProj.teamName;
@@ -599,9 +481,25 @@ const TeamLeaderDashboard = () => {
       }
     }
 
-    setProjects(prev => prev.map(p => p.id === updatedProj.id ? updatedProj : p));
-    if (selectedProject && selectedProject.id === updatedProj.id) {
-      setSelectedProject(updatedProj);
+    try {
+      const updated = await api.updateProject(updatedProj.id, updatedProj);
+      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      if (selectedProject && selectedProject.id === updated.id) {
+        setSelectedProject(updated);
+      }
+
+      // Sync team record update on backend
+      const fetchedTeams = await api.listTeams();
+      const matchedTeam = (fetchedTeams || []).find(t => t.projectId === updated.id);
+      if (matchedTeam) {
+        await api.updateTeam(matchedTeam.id, {
+          ...matchedTeam,
+          name: updated.teamName,
+          projectName: updated.name
+        });
+      }
+    } catch (err) {
+      console.error('Failed to update project/team on backend:', err);
     }
   };
 
@@ -609,17 +507,68 @@ const TeamLeaderDashboard = () => {
     setDeleteConfirm({
       type: 'project',
       message: 'Are you sure you want to delete this project? This will permanently delete the project and all related tasks and milestones.',
-      onConfirm: () => {
-        setProjects(prev => prev.filter(p => p.id !== projId));
-        if (selectedProject && selectedProject.id === projId) {
-          setSelectedProject(null);
-          setActiveTab('projects');
+      onConfirm: async () => {
+        try {
+          // 1. Delete project from database
+          await api.deleteProject(projId);
+          setProjects(prev => prev.filter(p => p.id !== projId));
+          if (selectedProject && selectedProject.id === projId) {
+            setSelectedProject(null);
+            setActiveTab('projects');
+          }
+
+          // 2. Delete team from teams collection in database
+          try {
+            const fetchedTeams = await api.listTeams();
+            const matchedTeam = (fetchedTeams || []).find(t => t.projectId === projId);
+            if (matchedTeam) {
+              await api.deleteTeam(matchedTeam.id);
+            }
+          } catch (teamErr) {
+            console.warn('Failed to clean up team from database:', teamErr);
+          }
+
+          // 3. Reset user team profile assignment back to "Not Assigned" in database
+          try {
+            const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+            const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+            const userIdx = registeredUsers.findIndex(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
+
+            if (userIdx !== -1) {
+              const matchedUser = registeredUsers[userIdx];
+              matchedUser.team = 'Not Assigned';
+              localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
+
+              currentUser.team = 'Not Assigned';
+              localStorage.setItem('currentUser', JSON.stringify(currentUser));
+
+              setMyTeamName('Not Assigned');
+
+              await api.updateUserProfile(matchedUser.id, {
+                name: matchedUser.fullName || matchedUser.name,
+                email: matchedUser.email,
+                role: matchedUser.role === 'Team Leader' ? 'TEAM_LEADER' : matchedUser.role === 'Mentor' ? 'MENTOR' : 'STUDENT',
+                department: matchedUser.department || 'Computer Science & Engineering',
+                salary: matchedUser.salary || 50000.0,
+                joinDate: matchedUser.joinDate || new Date().toISOString().split('T')[0],
+                team: 'Not Assigned'
+              });
+            }
+          } catch (userErr) {
+            console.warn('Failed to reset user profile team on database delete:', userErr);
+          }
+
+        } catch (err) {
+          console.error('Failed to delete project on backend:', err);
         }
       }
     });
   };
 
-  const handleSubmitWeeklyReport = (projectId, reportData) => {
+  const handleSubmitWeeklyReport = async (projectId, reportData) => {
+    const proj = projects.find(p => p.id === projectId);
+    if (!proj) return;
+
     const newReport = {
       id: `rep-${Date.now()}`,
       week: reportData.weekNumber || 'Week 1',
@@ -631,27 +580,20 @@ const TeamLeaderDashboard = () => {
       fileUrl: '#'
     };
 
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id === projectId) {
-          return {
-            ...p,
-            weeklyReports: [...(p.weeklyReports || []), newReport]
-          };
-        }
-        return p;
-      })
-    );
+    const nextP = {
+      ...proj,
+      weeklyReports: [...(proj.weeklyReports || []), newReport]
+    };
 
-    setSelectedProject((prev) => {
-      if (prev && prev.id === projectId) {
-        return {
-          ...prev,
-          weeklyReports: [...(prev.weeklyReports || []), newReport]
-        };
+    try {
+      const updated = await api.updateProject(projectId, nextP);
+      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      if (selectedProject && selectedProject.id === updated.id) {
+        setSelectedProject(updated);
       }
-      return prev;
-    });
+    } catch (err) {
+      console.error('Failed to sync submitted weekly report to database:', err);
+    }
   };
 
   const renderDashboardMain = () => {
@@ -662,118 +604,164 @@ const TeamLeaderDashboard = () => {
       <div className="space-y-8 animate-fade-in text-left">
         
         {/* Welcome Section */}
-        <div>
-          <h2 className="text-xl sm:text-2xl font-extrabold text-brand-text mb-1 tracking-tight">
-            Welcome 👋
-          </h2>
-          <p className="text-xs sm:text-sm text-brand-text-muted">
-            Manage your team's projects, assign tasks, monitor progress, and lead your team with AI-powered guidance.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-brand-text mb-1 tracking-tight">
+              Welcome 👋
+            </h2>
+            <p className="text-xs sm:text-sm text-brand-text-muted">
+              Manage your team's projects, assign tasks, monitor progress, and lead your team with AI-powered guidance.
+            </p>
+          </div>
+
+          {/* Team Switcher Dropdown */}
+          {myTeamsList.length > 1 && (
+            <div className="flex items-center gap-2 p-2 rounded-xl border border-brand-border bg-brand-card shadow-sm self-start sm:self-auto">
+              <span className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider pl-1">
+                Active Team:
+              </span>
+              <select
+                value={myTeamName}
+                onChange={async (e) => {
+                  const selectedTeam = e.target.value;
+                  setMyTeamName(selectedTeam);
+                  
+                  try {
+                    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+                    currentUser.team = selectedTeam;
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+
+                    const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+                    const myUserRecord = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
+
+                    if (myUserRecord) {
+                      myUserRecord.team = selectedTeam;
+                      localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
+
+                      // Sync team selection to database
+                      await api.updateUserProfile(myUserRecord.id, {
+                        name: myUserRecord.fullName || myUserRecord.name,
+                        email: myUserRecord.email,
+                        role: 'TEAM_LEADER',
+                        department: myUserRecord.department || 'Computer Science & Engineering',
+                        salary: myUserRecord.salary || 50000.0,
+                        joinDate: myUserRecord.joinDate || new Date().toISOString().split('T')[0],
+                        team: selectedTeam
+                      });
+                    }
+
+                    // Reload matching project from database
+                    const fetchedProj = await api.listProjects();
+                    const matchingProject = (fetchedProj || []).find(p => 
+                      p.teamName && p.teamName.toLowerCase() === selectedTeam.toLowerCase()
+                    );
+                    if (matchingProject) {
+                      setProjects([matchingProject]);
+                    } else {
+                      setProjects([]);
+                    }
+                  } catch (err) {
+                    console.error('Failed to switch team:', err);
+                  }
+                }}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg border border-brand-border bg-slate-50 dark:bg-slate-900 text-brand-text focus:outline-none cursor-pointer"
+              >
+                {myTeamsList.map(t => (
+                  <option key={t.id} value={t.name}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
-        {/* Set Up Team Card if Not Assigned */}
-        {myTeamName === 'Not Assigned' && (
-          <div className="p-6 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-sm space-y-4 max-w-xl">
-            <h3 className="text-sm font-bold text-brand-text">Set Up Your Team</h3>
-            <p className="text-xs text-brand-text-muted leading-relaxed">
-              You are not currently assigned to any team. Enter your team name below to initialize your team and start collaborating.
-            </p>
-            
-            {successMsg && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs font-semibold animate-fade-in">
-                {successMsg}
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <input
-                type="text"
-                placeholder="e.g. Team Alpha"
-                value={newTeamNameInput}
-                onChange={(e) => setNewTeamNameInput(e.target.value)}
-                className="flex-grow px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text placeholder-brand-text-muted/40 focus:outline-none focus:border-primary/50 text-sm"
-              />
+        {/* MY PROJECTS (LATEST 3) */}
+        {latestProjects.length > 0 ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-brand-border/40">
+              <h3 className="text-xs font-extrabold uppercase tracking-widest text-brand-text">
+                My Projects Overview
+              </h3>
               <button
                 type="button"
-                onClick={handleCreateTeamSubmit}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-xs uppercase tracking-wider hover:shadow-glow-primary hover-lift transition-all duration-300 cursor-pointer"
+                onClick={() => setActiveTab('projects')}
+                className="text-xs font-bold text-primary hover:underline inline-flex items-center gap-1 cursor-pointer focus:outline-none"
               >
-                Setup Team
+                View All Projects <FiArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {latestProjects.map((proj) => (
+                <div 
+                  key={proj.id} 
+                  className="p-5 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-sm flex flex-col justify-between hover:border-primary/20 hover:shadow-glow-primary/5 transition-all duration-300 h-full text-left"
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-extrabold text-brand-text">{proj.name}</h4>
+                        <span className="text-[10px] text-brand-text-muted font-semibold block mt-0.5">{proj.domain}</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded border border-brand-border bg-slate-100/50 dark:bg-slate-900/20 text-[9px] font-bold text-brand-text-muted uppercase select-none">
+                        {proj.status}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 pt-2 text-xs font-semibold text-brand-text-muted">
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider block text-brand-text-muted/60 mb-0.5">Health</span>
+                        <strong className={proj.health >= 80 ? 'text-emerald-500' : proj.health >= 60 ? 'text-amber-500' : 'text-rose-500'}>
+                          {proj.health}%
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider block text-brand-text-muted/60 mb-0.5">Progress</span>
+                        <strong className="text-brand-text">{proj.progress}%</strong>
+                      </div>
+                    </div>
+
+                    <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full ${proj.health >= 80 ? 'bg-emerald-500' : proj.health >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                        style={{ width: `${proj.progress}%` }}
+                      />
+                    </div>
+
+                    <div className="pt-2 border-t border-brand-border/40 flex items-center justify-between text-xs">
+                      <span className="text-brand-text-muted font-medium">Mentor: <strong className="text-brand-text">{proj.mentor}</strong></span>
+                      <button
+                        type="button"
+                        onClick={() => handleViewProject(proj)}
+                        className="text-xs font-bold text-primary hover:underline inline-flex items-center gap-1 cursor-pointer focus:outline-none"
+                      >
+                        View Details <FiArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="p-8 rounded-2xl border border-brand-border bg-brand-card text-center space-y-4">
+            <p className="text-sm text-brand-text-muted">You haven't declared any projects for your team yet.</p>
+            <button
+              onClick={() => setActiveTab('projects')}
+              className="px-5 py-2.5 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-hover hover:shadow-glow-primary transition-all duration-300"
+            >
+              Add New Project
+            </button>
           </div>
         )}
 
-        {/* MY PROJECTS (LATEST 3) */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-brand-border/40">
-            <h3 className="text-xs font-extrabold uppercase tracking-widest text-brand-text">
-              My Projects Overview
-            </h3>
-            <button
-              type="button"
-              onClick={() => setActiveTab('projects')}
-              className="text-xs font-bold text-primary hover:underline inline-flex items-center gap-1 cursor-pointer focus:outline-none"
-            >
-              View All Projects <FiArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {latestProjects.map((proj) => (
-              <div 
-                key={proj.id} 
-                className="p-5 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-sm flex flex-col justify-between hover:border-primary/20 hover:shadow-glow-primary/5 transition-all duration-300 h-full text-left"
-              >
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-extrabold text-brand-text">{proj.name}</h4>
-                      <span className="text-[10px] text-brand-text-muted font-semibold block mt-0.5">{proj.domain}</span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded border border-brand-border bg-slate-100/50 dark:bg-slate-900/20 text-[9px] font-bold text-brand-text-muted uppercase select-none">
-                      {proj.status}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 pt-2 text-xs font-semibold text-brand-text-muted">
-                    <div>
-                      <span className="text-[9px] uppercase tracking-wider block text-brand-text-muted/60 mb-0.5">Health</span>
-                      <strong className={proj.health >= 80 ? 'text-emerald-500' : proj.health >= 60 ? 'text-amber-500' : 'text-rose-500'}>
-                        {proj.health}%
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-[9px] uppercase tracking-wider block text-brand-text-muted/60 mb-0.5">Progress</span>
-                      <strong className="text-brand-text">{proj.progress}%</strong>
-                    </div>
-                  </div>
-
-                  <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full rounded-full ${proj.health >= 80 ? 'bg-emerald-500' : proj.health >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`}
-                      style={{ width: `${proj.progress}%` }}
-                    />
-                  </div>
-
-                  <div className="pt-2 border-t border-brand-border/40 flex items-center justify-between text-xs">
-                    <span className="text-brand-text-muted font-medium">Mentor: <strong className="text-brand-text">{proj.mentor}</strong></span>
-                    <button
-                      type="button"
-                      onClick={() => handleViewProject(proj)}
-                      className="text-xs font-bold text-primary hover:underline inline-flex items-center gap-1 cursor-pointer focus:outline-none"
-                    >
-                      View Details <FiArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* AI TEAM INSIGHTS */}
-        <AIInsights />
+        {projects.length > 0 && (
+          <AIInsights 
+            teamName={myTeamName} 
+            tasks={myProject?.tasks || []} 
+            members={activeMembers}
+          />
+        )}
 
       </div>
     );
@@ -853,7 +841,7 @@ const TeamLeaderDashboard = () => {
       case 'members':
         return <TeamMembers projects={projects} />;
       case 'tasks':
-        return <Tasks project={myProject} teamName={myTeamName} onUpdateTasks={handleUpdateTasks} />;
+        return <Tasks project={myProject} teamName={myTeamName} projects={projects} onUpdateTasks={handleUpdateTasks} />;
       case 'milestones':
         return <Milestones project={myProject} teamName={myTeamName} onUpdateMilestones={handleUpdateMilestones} />;
       case 'reports':
@@ -921,7 +909,7 @@ const TeamLeaderDashboard = () => {
               onClick={() => setMobileSidebarOpen(false)}
               className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity duration-300"
             />
-            <aside className="md:hidden fixed inset-y-0 left-0 w-64 bg-brand-card/95 border-r border-brand-border p-5 z-50 flex flex-col justify-between shadow-2xl animate-slide-right">
+            <aside className="md:hidden fixed inset-y-0 left-0 w-64 bg-brand-card border-r border-brand-border p-5 z-50 flex flex-col justify-between shadow-2xl animate-slide-right">
               <div className="space-y-6">
                 
                 {/* Brand title */}

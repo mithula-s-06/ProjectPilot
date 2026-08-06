@@ -10,7 +10,7 @@ const ProfileMenu = ({ isOpen, onClose, setActiveTab, onLogout, roleLabel = 'Adm
       <div className="fixed inset-0 z-40" onClick={onClose} />
       
       {/* Dropdown Container */}
-      <div className="absolute right-0 top-full mt-3 w-52 rounded-2xl border border-brand-border bg-brand-card/95 backdrop-blur-md shadow-2xl p-2.5 z-50 text-left animate-fade-in origin-top-right">
+      <div className="absolute right-0 top-full mt-3 w-52 rounded-2xl border border-brand-border bg-brand-card shadow-2xl p-2.5 z-50 text-left animate-fade-in origin-top-right">
         
         {/* Info label */}
         <div className="px-3.5 py-2 border-b border-brand-border mb-1">

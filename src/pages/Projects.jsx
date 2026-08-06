@@ -1,12 +1,23 @@
-import React, { useState } from 'react';
-import { FiPlus, FiX, FiCheck } from 'react-icons/fi';
+import React, { useState, useEffect } from 'react';
+import { FiPlus, FiX, FiCheck, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
 import ProjectGrid from '../components/ProjectGrid';
+import { api } from '../utils/api';
 
 const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, onDeleteProject }) => {
   const { currentPage } = usePage();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
+  const [projectPage, setProjectPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Reset page to 1 when projects array length or dashboard views change
+  useEffect(() => {
+    setProjectPage(1);
+  }, [projects.length, currentPage]);
+
+  const totalPages = Math.ceil(projects.length / itemsPerPage);
+  const paginatedProjects = projects.slice((projectPage - 1) * itemsPerPage, projectPage * itemsPerPage);
 
   const [toast, setToast] = useState(null);
   // Form states
@@ -68,11 +79,23 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
       const userIdx = registeredUsers.findIndex(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
 
       if (userIdx !== -1) {
-        registeredUsers[userIdx].team = formData.teamName.trim();
+        const matchedUser = registeredUsers[userIdx];
+        matchedUser.team = formData.teamName.trim();
         localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
         
         currentUser.team = formData.teamName.trim();
         localStorage.setItem('currentUser', JSON.stringify(currentUser));
+
+        // Call backend API to update Team Leader's team in database!
+        api.updateUserProfile(matchedUser.id, {
+          name: matchedUser.fullName || matchedUser.name,
+          email: matchedUser.email,
+          role: matchedUser.role === 'Team Leader' ? 'TEAM_LEADER' : matchedUser.role === 'Mentor' ? 'MENTOR' : 'STUDENT',
+          department: matchedUser.department || 'Computer Science & Engineering',
+          salary: matchedUser.salary || 50000.0,
+          joinDate: matchedUser.joinDate || new Date().toISOString().split('T')[0],
+          team: formData.teamName.trim()
+        }).catch(err => console.warn('Failed to sync user profile team to database:', err));
       }
     } catch (err) {
       console.error(err);
@@ -105,7 +128,7 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
           description: formData.description || 'No description provided.',
           teamName: formData.teamName.trim(),
           phase: 'Planning Phase',
-          mentor: 'Dr. Kumar',
+          mentor: 'Not Assigned',
           health: 100,
           progress: 0,
           status: 'Active',
@@ -178,11 +201,38 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
 
       {/* Grid listing */}
       <ProjectGrid 
-        projects={projects} 
+        projects={paginatedProjects} 
         onViewProject={onViewProject} 
         onEditProject={isTeamLeader ? handleEditClick : null} 
         onDeleteProject={isTeamLeader ? onDeleteProject : null} 
       />
+
+      {/* Pagination controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between border-t border-brand-border/40 pt-4 mt-6">
+          <button
+            type="button"
+            onClick={() => setProjectPage(prev => Math.max(prev - 1, 1))}
+            disabled={projectPage === 1}
+            className="px-3.5 py-1.5 rounded-xl border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-200/50 dark:hover:bg-slate-800/50 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-all duration-300 inline-flex items-center gap-1 cursor-pointer"
+          >
+            <FiChevronLeft className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+          <span className="text-xs font-extrabold tracking-wider uppercase text-brand-text-muted">
+            Page {projectPage} of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setProjectPage(prev => Math.min(prev + 1, totalPages))}
+            disabled={projectPage === totalPages}
+            className="px-3.5 py-1.5 rounded-xl border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-200/50 dark:hover:bg-slate-800/50 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-all duration-300 inline-flex items-center gap-1 cursor-pointer"
+          >
+            <span>Next</span>
+            <FiChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Add New Project Modal */}
       {modalOpen && (

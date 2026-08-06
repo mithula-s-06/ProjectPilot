@@ -64,10 +64,10 @@ const ProjectDetails = ({ project, onBack, onNavigateToSubmitReport, onNavigateT
               <FiLayers className="w-4 h-4 text-primary" /> Phase: <strong className="text-brand-text">{project.phase}</strong>
             </span>
             <span className="text-xs font-bold text-brand-text-muted flex items-center gap-1.5">
-              <FiUser className="w-4 h-4 text-secondary" /> Mentor: <strong className="text-brand-text">{!project.mentor || project.mentor === 'Not Assigned' ? 'Dr. Kumar' : project.mentor}</strong>
+              <FiUser className="w-4 h-4 text-secondary" /> Mentor: <strong className="text-brand-text">{!project.mentor ? 'Not Assigned' : project.mentor}</strong>
             </span>
             <span className="text-xs font-bold text-brand-text-muted flex items-center gap-1.5">
-              <FiUsers className="w-4 h-4 text-emerald-500" /> Team: <strong className="text-brand-text">{getTeamName()}</strong>
+              <FiUsers className="w-4 h-4 text-emerald-500" /> Project: <strong className="text-brand-text">{project.name}</strong>
             </span>
           </div>
         </div>

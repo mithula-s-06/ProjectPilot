@@ -4,6 +4,7 @@ import {
   FiArrowLeft, FiMail, FiShield, FiAward, FiUser, FiX 
 } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
+import { api } from '../utils/api';
 import AdminNavbar from '../components/AdminNavbar';
 import Sidebar from '../components/Sidebar';
 import DashboardCards from '../components/DashboardCards';
@@ -18,11 +19,7 @@ import Profile from './Profile';
 import TeamDetails from './TeamDetails';
 import NotificationsPage from './NotificationsPage';
 
-// Initial Mock data
-import { 
-  initialTeams, initialUsers, 
-  initialMentors, initialNotifications 
-} from '../utils/mockData';
+// Clear mock data imports
 
 const AdminDashboard = () => {
   const { navigateTo } = usePage();
@@ -45,11 +42,16 @@ const AdminDashboard = () => {
 
       const activeTeamsList = [];
 
+      const isUserInTeam = (user, tName) => {
+        if (!user || !user.team || !tName) return false;
+        return user.team.split(',').map(t => t.trim().toLowerCase()).includes(tName.toLowerCase());
+      };
+
       // 1. Collect teams from projects list
       projects.forEach(p => {
         if (!p.teamName || p.teamName === 'Not Assigned') return;
-        const members = registeredUsers.filter(u => u.team && u.team.toLowerCase() === p.teamName.toLowerCase());
-        const leader = registeredUsers.find(u => u.team && u.team.toLowerCase() === p.teamName.toLowerCase() && u.role === 'Team Leader');
+        const members = registeredUsers.filter(u => isUserInTeam(u, p.teamName));
+        const leader = registeredUsers.find(u => isUserInTeam(u, p.teamName) && u.role === 'Team Leader');
         
         activeTeamsList.push({
           id: p.id || `team-${Date.now()}-${Math.random()}`,
@@ -57,7 +59,7 @@ const AdminDashboard = () => {
           name: p.teamName,
           project: p.name,
           health: p.health || 80,
-          mentor: p.mentor || 'Dr. Kumar',
+          mentor: p.mentor || 'Not Assigned',
           status: p.health >= 95 ? 'Excellent' : p.health >= 80 ? 'Very Good' : p.health >= 60 ? 'Good' : 'Poor',
           membersCount: members.length,
           leaderName: leader ? (leader.fullName || leader.name) : 'Not Assigned'
@@ -67,23 +69,27 @@ const AdminDashboard = () => {
       // 2. Collect teams from registered users who don't have a project yet
       registeredUsers.forEach(u => {
         if (!u.team || u.team === 'Not Assigned') return;
-        const exists = activeTeamsList.some(t => t.name.toLowerCase() === u.team.toLowerCase());
-        if (!exists) {
-          const members = registeredUsers.filter(user => user.team && user.team.toLowerCase() === u.team.toLowerCase());
-          const leader = registeredUsers.find(user => user.team && user.team.toLowerCase() === u.team.toLowerCase() && user.role === 'Team Leader');
-          
-          activeTeamsList.push({
-            id: `team-${Date.now()}-${Math.random()}`,
-            rank: activeTeamsList.length + 1,
-            name: u.team,
-            project: 'No Project Declared Yet',
-            health: 70,
-            mentor: 'Dr. Kumar',
-            status: 'Good',
-            membersCount: members.length,
-            leaderName: leader ? (leader.fullName || leader.name) : 'Not Assigned'
-          });
-        }
+        const userTeams = u.team.split(',').map(t => t.trim());
+        userTeams.forEach(tName => {
+          if (!tName || tName === 'Not Assigned') return;
+          const exists = activeTeamsList.some(t => t.name.toLowerCase() === tName.toLowerCase());
+          if (!exists) {
+            const members = registeredUsers.filter(user => isUserInTeam(user, tName));
+            const leader = registeredUsers.find(user => isUserInTeam(user, tName) && user.role === 'Team Leader');
+            
+            activeTeamsList.push({
+              id: `team-${Date.now()}-${Math.random()}`,
+              rank: activeTeamsList.length + 1,
+              name: tName,
+              project: 'No Project Declared Yet',
+              health: 70,
+              mentor: 'Not Assigned',
+              status: 'Good',
+              membersCount: members.length,
+              leaderName: leader ? (leader.fullName || leader.name) : 'Not Assigned'
+            });
+          }
+        });
       });
 
       // Sort by health desc for ranking
@@ -147,9 +153,9 @@ const AdminDashboard = () => {
     } catch (err) {
       console.error(err);
     }
-    return initialUsers;
+     return [];
   });
-  const [notifications, setNotifications] = useState(initialNotifications);
+  const [notifications, setNotifications] = useState([]);
 
   // Selected team state for Assign Mentor Modal (null if modal closed)
   const [assigningTeam, setAssigningTeam] = useState(null);
@@ -170,94 +176,141 @@ const AdminDashboard = () => {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   React.useEffect(() => {
-    const handleFocus = () => {
+    const handleFocus = async () => {
       try {
-        const storedProj = localStorage.getItem('projects');
-        const storedUsers = localStorage.getItem('registeredUsers');
-        if (storedProj) {
-          const registeredUsers = storedUsers ? JSON.parse(storedUsers) : [];
-          const projects = JSON.parse(storedProj);
+        let mappedUsers = [];
+        try {
+          const fetchedUsers = await api.listUsers();
+          mappedUsers = (fetchedUsers || []).map(u => ({
+            id: u.id,
+            fullName: u.name,
+            email: u.email,
+            role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+            collegeName: 'ProjectPilot University',
+            department: u.department || 'Computer Science & Engineering',
+            status: 'Active',
+            team: u.team || 'Not Assigned'
+          }));
+          localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
+        } catch (e) {
+          console.warn('Background users fetch failed:', e);
+          const storedUsers = localStorage.getItem('registeredUsers');
+          mappedUsers = storedUsers ? JSON.parse(storedUsers) : [];
+        }
 
-          setTeams(() => {
-            const activeTeamsList = [];
+        let projects = [];
+        try {
+          const fetchedProj = await api.listProjects();
+          projects = fetchedProj || [];
+          localStorage.setItem('projects', JSON.stringify(projects));
+        } catch (e) {
+          console.warn('Background projects fetch failed:', e);
+          const storedProj = localStorage.getItem('projects');
+          projects = storedProj ? JSON.parse(storedProj) : [];
+        }
 
-            // 1. Collect teams from projects list
-            projects.forEach(p => {
-              if (!p.teamName || p.teamName === 'Not Assigned') return;
-              const members = registeredUsers.filter(u => u.team && u.team.toLowerCase() === p.teamName.toLowerCase());
-              const leader = registeredUsers.find(u => u.team && u.team.toLowerCase() === p.teamName.toLowerCase() && u.role === 'Team Leader');
-              
-              activeTeamsList.push({
-                id: p.id || `team-${Date.now()}-${Math.random()}`,
-                rank: activeTeamsList.length + 1,
-                name: p.teamName,
-                project: p.name,
-                health: p.health || 80,
-                mentor: p.mentor || 'Dr. Kumar',
-                status: p.health >= 95 ? 'Excellent' : p.health >= 80 ? 'Very Good' : p.health >= 60 ? 'Good' : 'Poor',
-                membersCount: members.length,
-                leaderName: leader ? (leader.fullName || leader.name) : 'Not Assigned'
-              });
+        setUsers(mappedUsers.map(u => ({
+          id: u.id || `usr-${Date.now()}-${Math.random()}`,
+          name: u.fullName || u.name,
+          email: u.email,
+          role: u.role,
+          team: u.team || 'Not Assigned',
+          status: u.status || 'Active',
+          avatarInitials: (u.fullName || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
+          avatarBg: 'bg-primary/20 text-primary'
+        })));
+
+        let databaseTeams = [];
+        try {
+          databaseTeams = await api.listTeams() || [];
+        } catch (dbErr) {
+          console.warn('Failed to fetch teams list from backend:', dbErr);
+        }
+
+        setTeams(() => {
+          const activeTeamsList = [];
+          const isUserInTeam = (user, tName) => {
+            if (!user || !user.team || !tName) return false;
+            return user.team.split(',').map(t => t.trim().toLowerCase()).includes(tName.toLowerCase());
+          };
+
+          projects.forEach(p => {
+            if (!p.teamName || p.teamName === 'Not Assigned') return;
+            const members = mappedUsers.filter(u => isUserInTeam(u, p.teamName));
+            const leader = mappedUsers.find(u => isUserInTeam(u, p.teamName) && u.role === 'Team Leader');
+            const matchedDbTeam = databaseTeams.find(dt => dt.name && dt.name.toLowerCase() === p.teamName.toLowerCase());
+            const dbLeader = matchedDbTeam ? matchedDbTeam.leaderName : null;
+
+            const leaderIsMatched = members.some(m => m.role === 'Team Leader');
+            const leaderExists = leader || (dbLeader && dbLeader !== 'Not Assigned');
+            const calculatedMembersCount = members.length + (leaderExists && !leaderIsMatched ? 1 : 0);
+
+            activeTeamsList.push({
+              id: p.id || `team-${Date.now()}-${Math.random()}`,
+              rank: activeTeamsList.length + 1,
+              name: p.teamName,
+              project: p.name,
+              health: p.health || 80,
+              mentor: p.mentor || 'Not Assigned',
+              status: p.health >= 95 ? 'Excellent' : p.health >= 80 ? 'Very Good' : p.health >= 60 ? 'Good' : 'Poor',
+              membersCount: calculatedMembersCount,
+              leaderName: leader ? (leader.fullName || leader.name) : (dbLeader && dbLeader !== 'Not Assigned' ? dbLeader : 'Not Assigned')
             });
+          });
 
-            // 2. Collect teams from registered users who don't have a project yet
-            registeredUsers.forEach(u => {
-              if (!u.team || u.team === 'Not Assigned') return;
-              const exists = activeTeamsList.some(t => t.name.toLowerCase() === u.team.toLowerCase());
+          mappedUsers.forEach(u => {
+            if (!u.team || u.team === 'Not Assigned') return;
+            const userTeams = u.team.split(',').map(t => t.trim());
+            userTeams.forEach(tName => {
+              if (!tName || tName === 'Not Assigned') return;
+              const exists = activeTeamsList.some(t => t.name.toLowerCase() === tName.toLowerCase());
               if (!exists) {
-                const members = registeredUsers.filter(user => user.team && user.team.toLowerCase() === u.team.toLowerCase());
-                const leader = registeredUsers.find(user => user.team && user.team.toLowerCase() === u.team.toLowerCase() && user.role === 'Team Leader');
-                
+                const members = mappedUsers.filter(user => isUserInTeam(user, tName));
+                const leader = mappedUsers.find(user => isUserInTeam(user, tName) && user.role === 'Team Leader');
+                const matchedDbTeam = databaseTeams.find(dt => dt.name && dt.name.toLowerCase() === tName.toLowerCase());
+                const dbLeader = matchedDbTeam ? matchedDbTeam.leaderName : null;
+
+                const leaderIsMatched = members.some(m => m.role === 'Team Leader');
+                const leaderExists = leader || (dbLeader && dbLeader !== 'Not Assigned');
+                const calculatedMembersCount = members.length + (leaderExists && !leaderIsMatched ? 1 : 0);
+
                 activeTeamsList.push({
                   id: `team-${Date.now()}-${Math.random()}`,
                   rank: activeTeamsList.length + 1,
-                  name: u.team,
+                  name: tName,
                   project: 'No Project Declared Yet',
                   health: 70,
-                  mentor: 'Dr. Kumar',
+                  mentor: 'Not Assigned',
                   status: 'Good',
-                  membersCount: members.length,
-                  leaderName: leader ? (leader.fullName || leader.name) : 'Not Assigned'
+                  membersCount: calculatedMembersCount,
+                  leaderName: leader ? (leader.fullName || leader.name) : (dbLeader && dbLeader !== 'Not Assigned' ? dbLeader : 'Not Assigned')
                 });
               }
             });
-
-            // Sort by health desc for ranking
-            activeTeamsList.sort((a, b) => b.health - a.health);
-            // Re-assign ranks
-            activeTeamsList.forEach((t, i) => {
-              t.rank = i + 1;
-            });
-
-            return activeTeamsList;
           });
-        }
-        
-        if (storedUsers) {
-          const registeredUsers = JSON.parse(storedUsers);
-          const signedUpMentors = registeredUsers.filter(u => u.role === 'Mentor');
-          const nextMentors = [];
-          signedUpMentors.forEach(m => {
-            const name = m.fullName || m.name;
-            const exists = nextMentors.some(bm => bm.name.toLowerCase() === name.toLowerCase());
-            if (!exists) {
-              nextMentors.push({
-                id: m.id || `mentor-${Date.now()}-${Math.random()}`,
-                name: name,
-                department: m.department || 'Computer Science & Engineering',
-                currentTeamsAssigned: 0,
-                avatarColor: m.avatarBg || 'bg-cyan-500 text-white',
-                avatarInitials: (m.fullName || m.name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-              });
-            }
-          });
-          setMentors(nextMentors);
-        }
+
+          activeTeamsList.sort((a, b) => b.health - a.health);
+          activeTeamsList.forEach((t, i) => { t.rank = i + 1; });
+          return activeTeamsList;
+        });
+
+        const signedUpMentors = mappedUsers.filter(u => u.role === 'Mentor');
+        const nextMentors = signedUpMentors.map(m => ({
+          id: m.id || `mentor-${Date.now()}-${Math.random()}`,
+          name: m.fullName || m.name,
+          department: m.department || 'Computer Science & Engineering',
+          currentTeamsAssigned: 0,
+          avatarColor: m.avatarBg || 'bg-cyan-500 text-white',
+          avatarInitials: (m.fullName || '?').split(' ').map(n => m.name ? n[0] : '?').join('').toUpperCase().slice(0, 2)
+        }));
+        setMentors(nextMentors);
+
       } catch (err) {
         console.error(err);
       }
     };
 
+    handleFocus();
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, []);
@@ -267,24 +320,35 @@ const AdminDashboard = () => {
   };
 
   // Callback to perform mentor assignment
-  const handleAssignMentor = (mentorName) => {
+  const handleAssignMentor = async (mentorName) => {
     if (!assigningTeam) return;
 
     // Update the team with the mentor and status
-    const updatedTeams = teams.map((team) => {
-      if (team.id === assigningTeam.id) {
-        return { 
-          ...team, 
-          mentor: mentorName,
-          status: team.health >= 95 ? 'Excellent' : team.health >= 80 ? 'Very Good' : 'Good' 
-        };
-      }
-      return team;
-    });
-    setTeams(updatedTeams);
+    const updatedTeam = { 
+      ...assigningTeam, 
+      mentor: mentorName,
+      status: assigningTeam.health >= 95 ? 'Excellent' : assigningTeam.health >= 80 ? 'Very Good' : 'Good' 
+    };
 
-    // Update the project in localStorage.projects so Student and Team Leader dashboards reflect the new mentor!
     try {
+      // 1. Sync updated team to backend database
+      await api.updateTeam(assigningTeam.id, {
+        id: updatedTeam.id,
+        name: updatedTeam.name,
+        projectId: updatedTeam.projectId,
+        projectName: updatedTeam.projectName,
+        mentorName: mentorName,
+        health: updatedTeam.health,
+        leaderName: updatedTeam.leaderName,
+        membersCount: updatedTeam.membersCount,
+        status: updatedTeam.status,
+        rank: updatedTeam.rank
+      });
+
+      // Update state
+      setTeams(prev => prev.map(t => t.id === assigningTeam.id ? updatedTeam : t));
+
+      // 2. Find and update the associated project on the backend
       const storedProj = localStorage.getItem('projects');
       if (storedProj) {
         const allProj = JSON.parse(storedProj);
@@ -292,65 +356,72 @@ const AdminDashboard = () => {
           const tName = (assigningTeam.name || '').trim().toLowerCase();
           const pTeamName = (p.teamName || '').trim().toLowerCase();
           
-          if (pTeamName && pTeamName === tName) {
-            return { ...p, mentor: mentorName };
-          }
-          if (p.name && p.name.toLowerCase().includes(tName)) {
-            return { ...p, mentor: mentorName };
-          }
-          if (assigningTeam.name === 'Team Alpha' && (p.name.includes('Attendance') || p.name.includes('Alpha'))) {
-            return { ...p, mentor: mentorName };
-          }
-          if (assigningTeam.name === 'Team Beta' && (p.name.includes('Health') || p.name.includes('Beta'))) {
-            return { ...p, mentor: mentorName };
-          }
-          if (assigningTeam.name === 'Team Gamma' && (p.name.includes('Plagiarism') || p.name.includes('Gamma'))) {
-            return { ...p, mentor: mentorName };
-          }
-          if (assigningTeam.name === 'Team Delta' && (p.name.includes('Irrigation') || p.name.includes('Delta'))) {
-            return { ...p, mentor: mentorName };
-          }
-          if (assigningTeam.name === 'Team Omega' && (p.name.includes('Voting') || p.name.includes('Blockchain') || p.name.includes('Omega'))) {
+          if ((pTeamName && pTeamName === tName) || 
+              (p.name && p.name.toLowerCase().includes(tName)) ||
+              (assigningTeam.name === 'Team Alpha' && (p.name.includes('Attendance') || p.name.includes('Alpha'))) ||
+              (assigningTeam.name === 'Team Beta' && (p.name.includes('Health') || p.name.includes('Beta'))) ||
+              (assigningTeam.name === 'Team Gamma' && (p.name.includes('Plagiarism') || p.name.includes('Gamma'))) ||
+              (assigningTeam.name === 'Team Delta' && (p.name.includes('Irrigation') || p.name.includes('Delta'))) ||
+              (assigningTeam.name === 'Team Omega' && (p.name.includes('Voting') || p.name.includes('Blockchain') || p.name.includes('Omega')))) {
             return { ...p, mentor: mentorName };
           }
           return p;
         });
+
         localStorage.setItem('projects', JSON.stringify(updatedProj));
+        
+        // Save the updated projects to database
+        for (const p of updatedProj) {
+          const tName = (assigningTeam.name || '').trim().toLowerCase();
+          const pTeamName = (p.teamName || '').trim().toLowerCase();
+          if ((pTeamName && pTeamName === tName) || 
+              (p.name && p.name.toLowerCase().includes(tName)) ||
+              (assigningTeam.name === 'Team Alpha' && (p.name.includes('Attendance') || p.name.includes('Alpha'))) ||
+              (assigningTeam.name === 'Team Beta' && (p.name.includes('Health') || p.name.includes('Beta'))) ||
+              (assigningTeam.name === 'Team Gamma' && (p.name.includes('Plagiarism') || p.name.includes('Gamma'))) ||
+              (assigningTeam.name === 'Team Delta' && (p.name.includes('Irrigation') || p.name.includes('Delta'))) ||
+              (assigningTeam.name === 'Team Omega' && (p.name.includes('Voting') || p.name.includes('Blockchain') || p.name.includes('Omega')))) {
+            await api.updateProject(p.id, p);
+          }
+        }
       }
-    } catch (e) {
-      console.error(e);
+
+      // Increment mentor workload
+      const updatedMentors = mentors.map((mentor) => {
+        if (mentor.name === mentorName) {
+          return { ...mentor, currentTeamsAssigned: mentor.currentTeamsAssigned + 1 };
+        }
+        return mentor;
+      });
+      setMentors(updatedMentors);
+
+      // Prepend a new notification
+      const newNotif = {
+        id: `notif-${Date.now()}`,
+        type: 'success',
+        title: 'Mentor Allocated',
+        message: `${mentorName} was successfully assigned to ${assigningTeam.name}.`,
+        time: 'Just now',
+      };
+      setNotifications([newNotif, ...notifications]);
+
+      // Show neat in-page toast notification
+      setToast({
+        message: `${mentorName} was successfully assigned to ${assigningTeam.name}.`,
+        type: 'success'
+      });
+      setTimeout(() => {
+        setToast(prev => (prev && prev.message.includes(mentorName) ? null : prev));
+      }, 4000);
+
+    } catch (err) {
+      console.error('Failed to assign mentor:', err);
+      setToast({ message: 'Failed to assign mentor on backend.', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      // Close Modal
+      setAssigningTeam(null);
     }
-
-    // Increment mentor workload
-    const updatedMentors = mentors.map((mentor) => {
-      if (mentor.name === mentorName) {
-        return { ...mentor, currentTeamsAssigned: mentor.currentTeamsAssigned + 1 };
-      }
-      return mentor;
-    });
-    setMentors(updatedMentors);
-
-    // Prepend a new notification
-    const newNotif = {
-      id: `notif-${Date.now()}`,
-      type: 'success',
-      title: 'Mentor Allocated',
-      message: `${mentorName} was successfully assigned to ${assigningTeam.name}.`,
-      time: 'Just now',
-    };
-    setNotifications([newNotif, ...notifications]);
-
-    // Close Modal
-    setAssigningTeam(null);
-    
-    // Show neat in-page toast notification
-    setToast({
-      message: `${mentorName} was successfully assigned to ${assigningTeam.name}.`,
-      type: 'success'
-    });
-    setTimeout(() => {
-      setToast(prev => (prev && prev.message.includes(mentorName) ? null : prev));
-    }, 4000);
   };
 
   // Delete team callback
@@ -393,7 +464,7 @@ const AdminDashboard = () => {
     setDeleteConfirm({ id: userId, type: 'user', name: userName });
   };
 
-  const executeDeleteUser = (userId) => {
+  const executeDeleteUser = async (userId) => {
     const userToDelete = users.find(u => u.id === userId);
     const userName = userToDelete ? userToDelete.name : `ID ${userId}`;
 
@@ -406,6 +477,12 @@ const AdminDashboard = () => {
         const parsed = JSON.parse(stored);
         const filtered = parsed.filter(u => u.id !== userId && u.email !== userToDelete?.email);
         localStorage.setItem('registeredUsers', JSON.stringify(filtered));
+        // Sync deletion to MongoDB backend
+        try {
+          await api.deleteUserProfile(userId);
+        } catch (err) {
+          console.warn('Deleting user profile in backend failed:', err);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -645,7 +722,7 @@ const AdminDashboard = () => {
               className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity duration-300"
             />
             {/* Sliding Drawer */}
-            <aside className="md:hidden fixed inset-y-0 left-0 w-64 bg-brand-card/95 border-r border-brand-border p-5 z-50 flex flex-col justify-between shadow-2xl animate-slide-right">
+            <aside className="md:hidden fixed inset-y-0 left-0 w-64 bg-brand-card border-r border-brand-border p-5 z-50 flex flex-col justify-between shadow-2xl animate-slide-right">
               <div className="space-y-6">
                 
                 {/* Brand title & Close */}

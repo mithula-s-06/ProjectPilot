@@ -2,10 +2,9 @@ import React from 'react';
 import { FiArrowLeft, FiActivity, FiGithub, FiCalendar } from 'react-icons/fi';
 
 const TeamDetails = ({ team, onBack }) => {
-  if (!team) return null;
-
   // Find active project from localStorage matching team name
   const activeProject = React.useMemo(() => {
+    if (!team) return null;
     try {
       const storedProj = localStorage.getItem('projects');
       if (storedProj) {
@@ -18,21 +17,25 @@ const TeamDetails = ({ team, onBack }) => {
     return null;
   }, [team]);
 
-  // Find roster members dynamically
   const dynamicRoster = React.useMemo(() => {
+    if (!team) return { leaderName: 'Not Assigned', memberNames: [] };
     try {
       const storedUsers = localStorage.getItem('registeredUsers');
       if (storedUsers) {
         const registeredUsers = JSON.parse(storedUsers);
-        const teamUsers = registeredUsers.filter(u => u.team && u.team.toLowerCase() === team.name.toLowerCase());
+        
+        const isUserInTeam = (user, tName) => {
+          if (!user || !user.team || !tName) return false;
+          return user.team.split(',').map(t => t.trim().toLowerCase()).includes(tName.toLowerCase());
+        };
+
+        const teamUsers = registeredUsers.filter(u => isUserInTeam(u, team.name));
         
         const leaderRecord = teamUsers.find(u => u.role === 'Team Leader');
-        const leaderName = leaderRecord ? (leaderRecord.fullName || leaderRecord.name) : (team.leaderName || 'Ankit Sharma');
+        const leaderName = leaderRecord ? (leaderRecord.fullName || leaderRecord.name) : (team.leaderName && team.leaderName !== 'Not Assigned' ? team.leaderName : 'Not Assigned');
         
         const memberRecords = teamUsers.filter(u => u.role !== 'Team Leader');
-        const memberNames = memberRecords.length > 0 
-          ? memberRecords.map(u => u.fullName || u.name)
-          : (team.members || ['Sneha Reddy', 'Amit Mehta', 'Vikram Rao']);
+        const memberNames = memberRecords.map(u => u.fullName || u.name);
           
         return { leaderName, memberNames };
       }
@@ -40,10 +43,12 @@ const TeamDetails = ({ team, onBack }) => {
       console.error(e);
     }
     return { 
-      leaderName: team.leaderName || 'Ankit Sharma', 
-      memberNames: team.members || ['Sneha Reddy', 'Amit Mehta', 'Vikram Rao'] 
+      leaderName: team.leaderName || 'Not Assigned', 
+      memberNames: [] 
     };
   }, [team]);
+
+  if (!team) return null;
 
   const leader = dynamicRoster.leaderName;
   const members = dynamicRoster.memberNames;
@@ -56,13 +61,13 @@ const TeamDetails = ({ team, onBack }) => {
     { name: 'Vite UI connection endpoints', dueDate: '2026-07-02', status: 'Pending' }
   ]);
 
-  const github = activeProject && activeProject.github ? activeProject.github : (team.github || {
-    commits: 142,
-    prs: 18,
-    openIssues: 4,
-    closedIssues: 24,
-    contributionPercentage: 72
-  });
+  const github = activeProject && activeProject.github ? activeProject.github : {
+    commits: 0,
+    prs: 0,
+    openIssues: 0,
+    closedIssues: 0,
+    contributionPercentage: 0
+  };
 
   const tasks = activeProject && activeProject.tasks ? activeProject.tasks : (team.tasks || [
     { status: 'Completed' }, { status: 'Completed' }, { status: 'In Progress' }, { status: 'Pending' }
@@ -201,11 +206,15 @@ const TeamDetails = ({ team, onBack }) => {
           <div>
             <span className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider block mb-1">Roster Members</span>
             <div className="flex flex-wrap gap-2">
-              {members.map((m, idx) => (
-                <span key={idx} className="px-2.5 py-0.5 rounded-lg border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-xs font-semibold text-brand-text">
-                  {m}
-                </span>
-              ))}
+              {members.length === 0 ? (
+                <span className="text-xs text-brand-text-muted">No members assigned yet</span>
+              ) : (
+                members.map((m, idx) => (
+                  <span key={idx} className="px-2.5 py-0.5 rounded-lg border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-xs font-semibold text-brand-text">
+                    {m}
+                  </span>
+                ))
+              )}
             </div>
           </div>
         </div>

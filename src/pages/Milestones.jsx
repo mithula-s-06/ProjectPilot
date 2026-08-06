@@ -7,14 +7,6 @@ const Milestones = ({ project, teamName, onUpdateMilestones }) => {
     if (project && project.milestones) {
       return project.milestones;
     }
-    if (teamName === 'Team Alpha') {
-      return [
-        { id: 'ms-1', name: 'Requirement Analysis & Schema design', dueDate: '2026-06-05', progress: 100, status: 'Completed' },
-        { id: 'ms-2', name: 'Core Facial Recognition Model Training', dueDate: '2026-06-18', progress: 100, status: 'Completed' },
-        { id: 'ms-3', name: 'Integrate Web UI & Client dashboard widgets', dueDate: '2026-07-02', progress: 60, status: 'Pending' },
-        { id: 'ms-4', name: 'Deploy to AWS Cloud & System Security Audit', dueDate: '2026-07-20', progress: 0, status: 'Pending' }
-      ];
-    }
     return [];
   });
 

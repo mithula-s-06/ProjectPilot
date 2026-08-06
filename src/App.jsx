@@ -49,41 +49,66 @@ function AppContent() {
 }
 
 import { useEffect } from 'react';
-import { initialUsers, studentProjects } from './utils/mockData';
+import { api } from './utils/api';
 
 function App() {
   useEffect(() => {
-    const storedUsers = localStorage.getItem('registeredUsers');
-    if (!storedUsers) {
-      const users = initialUsers.map(user => ({
-        id: user.id,
-        fullName: user.name,
-        email: user.email,
-        password: 'PASSWORD', // Default password for initial mock users
-        role: user.role === 'Student / Team Leader' ? 'Team Leader' : user.role === 'Mentor' ? 'Mentor' : 'Student',
-        collegeName: 'ProjectPilot University',
-        department: 'Computer Science & Engineering',
-        status: user.status,
-        avatarInitials: user.avatarInitials,
-        avatarBg: user.avatarBg,
-        team: user.team
-      }));
-      localStorage.setItem('registeredUsers', JSON.stringify(users));
+    async function initSession() {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          // Check token session
+          await api.getSession();
+          
+          // Background sync
+          const projects = await api.listProjects();
+          localStorage.setItem('projects', JSON.stringify(projects || []));
+
+          const users = await api.listUsers();
+          const mappedUsers = (users || []).map(u => ({
+            id: u.id,
+            fullName: u.name,
+            email: u.email,
+            role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+            collegeName: 'ProjectPilot University',
+            department: u.department || 'Computer Science & Engineering',
+            status: 'Active',
+            team: u.team || 'Not Assigned'
+          }));
+          localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
+
+          // Sync the active currentUser's details using the registeredUsers database match
+          const storedUser = localStorage.getItem('currentUser');
+          if (storedUser) {
+            const currentUser = JSON.parse(storedUser);
+            const myUserRecord = mappedUsers.find(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
+            if (myUserRecord) {
+              if (myUserRecord.fullName) currentUser.fullName = myUserRecord.fullName;
+              currentUser.team = myUserRecord.team || 'Not Assigned';
+              localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            }
+          }
+        } catch (err) {
+          console.warn('Session verification or background sync failed:', err);
+          // Token is invalid/expired
+          localStorage.removeItem('token');
+          localStorage.removeItem('currentUser');
+        }
+      }
+
+      // Fallback local seeding if nothing in storage
+      const storedUsers = localStorage.getItem('registeredUsers');
+      if (!storedUsers) {
+        localStorage.setItem('registeredUsers', JSON.stringify([]));
+      }
+
+      const storedProjects = localStorage.getItem('projects');
+      if (!storedProjects) {
+        localStorage.setItem('projects', JSON.stringify([]));
+      }
     }
 
-    const storedProjects = localStorage.getItem('projects');
-    if (!storedProjects) {
-      const projectsWithTeams = studentProjects.map(p => {
-        let team = 'Not Assigned';
-        if (p.name.includes('Attendance')) team = 'Team Alpha';
-        else if (p.name.includes('Health')) team = 'Team Beta';
-        else if (p.name.includes('Plagiarism')) team = 'Team Gamma';
-        else if (p.name.includes('Irrigation')) team = 'Team Delta';
-        else if (p.name.includes('Voting') || p.name.includes('Blockchain')) team = 'Team Omega';
-        return { ...p, teamName: team };
-      });
-      localStorage.setItem('projects', JSON.stringify(projectsWithTeams));
-    }
+    initSession();
   }, []);
 
   return (

@@ -1,47 +1,111 @@
 import React, { useState } from 'react';
-import { FiPlus, FiX, FiCheck, FiClock, FiAlertCircle, FiUser, FiFileText } from 'react-icons/fi';
+import { FiPlus, FiX, FiCheck, FiClock, FiUser, FiFileText, FiTrash2 } from 'react-icons/fi';
+import { api } from '../utils/api';
 
-const Tasks = ({ project, teamName, onUpdateTasks }) => {
+const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
   const [modalOpen, setModalOpen] = useState(false);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [selectedModalProject, setSelectedModalProject] = useState(project || projects[0] || null);
 
-  const [teamMembers] = useState(() => {
-    try {
-      const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-      if (teamName && teamName !== 'Not Assigned') {
-        const list = registeredUsers.filter(u => u.team === teamName).map(u => u.fullName || u.name);
-        if (list.length > 0) return list;
-      }
-    } catch (e) {
-      console.error(e);
+  React.useEffect(() => {
+    if (modalOpen) {
+      setSelectedModalProject(project || projects[0] || null);
     }
-    if (teamName === 'Team Beta') return ['Rohan Patel', 'Priya Singh', 'Kabir Sen'];
-    if (teamName === 'Team Gamma') return ['Sameer Verma', 'Aditi Rao', 'Rajesh K'];
-    if (teamName === 'Team Delta') return ['Neha Gupta', 'Karan Johar', 'Sanjay Dutt'];
-    return ['Ankit Sharma', 'Sneha Reddy', 'Amit Mehta', 'Vikram Rao'];
-  });
+  }, [modalOpen, project, projects]);
+
+  React.useEffect(() => {
+    let active = true;
+    const loadMembers = async () => {
+      try {
+        const activeTeamName = selectedModalProject?.teamName || teamName;
+        if (!activeTeamName || activeTeamName === 'Not Assigned') return;
+
+        const fetchedUsers = await api.listUsers() || [];
+        if (!active) return;
+        
+        let databaseTeams = [];
+        try {
+          databaseTeams = await api.listTeams() || [];
+        } catch (dbErr) {
+          console.warn('Failed to load teams list in Tasks:', dbErr);
+        }
+
+        const matchedDbTeam = databaseTeams.find(dt => dt.name && dt.name.toLowerCase() === activeTeamName.toLowerCase());
+        const dbLeaderName = matchedDbTeam ? matchedDbTeam.leaderName : null;
+
+        const isUserInTeam = (user, tName) => {
+          if (!user || !user.team || !tName) return false;
+          return user.team.split(',').map(t => t.trim().toLowerCase()).includes(tName.toLowerCase());
+        };
+
+        // Resolve Team Leader
+        const leaderUser = fetchedUsers.find(u => 
+          (u.role === 'TEAM_LEADER' && dbLeaderName && u.name && u.name.toLowerCase() === dbLeaderName.toLowerCase()) ||
+          (u.role === 'TEAM_LEADER' && isUserInTeam(u, activeTeamName))
+        );
+
+        // Resolve other team members
+        const otherTeamUsers = fetchedUsers.filter(u => 
+          isUserInTeam(u, activeTeamName) && 
+          (!leaderUser || u.id !== leaderUser.id)
+        );
+
+        const namesList = [];
+        if (leaderUser) {
+          namesList.push(leaderUser.name);
+        }
+        otherTeamUsers.forEach(u => {
+          namesList.push(u.name);
+        });
+
+        setTeamMembers(namesList);
+      } catch (err) {
+        console.error('Failed to load team members in Tasks:', err);
+      }
+    };
+    loadMembers();
+    return () => {
+      active = false;
+    };
+  }, [selectedModalProject, teamName]);
 
   const [tasks, setTasks] = useState(() => {
     if (project && project.tasks) {
       return project.tasks;
     }
-    if (teamName === 'Team Alpha') {
-      return [
-        { id: 'tk-1', name: 'Optimize OpenCV facial landmarks inference', student: 'Ankit Sharma', priority: 'High', deadline: '2026-06-08', status: 'Completed' },
-        { id: 'tk-2', name: 'Establish BLE communication channel calibrations', student: 'Sneha Reddy', priority: 'High', deadline: '2026-06-19', status: 'Completed' },
-        { id: 'tk-3', name: 'Setup target vector database index cralwer', student: 'Amit Mehta', priority: 'Medium', deadline: '2026-07-05', status: 'In Progress' },
-        { id: 'tk-4', name: 'Implement local gateway memory caches', student: 'Vikram Rao', priority: 'Low', deadline: '2026-07-12', status: 'Pending' }
-      ];
-    }
     return [];
   });
 
+  React.useEffect(() => {
+    if (project && project.tasks) {
+      setTasks(project.tasks);
+    } else {
+      setTasks([]);
+    }
+  }, [project]);
+
   const [formData, setFormData] = useState({
     name: '',
-    student: teamMembers[0] || '',
+    student: '',
     priority: 'High',
     deadline: '',
     description: ''
   });
+
+  React.useEffect(() => {
+    if (modalOpen && teamMembers.length > 0) {
+      setFormData(prev => {
+        if (prev.student && teamMembers.includes(prev.student)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          student: teamMembers[0]
+        };
+      });
+    }
+  }, [modalOpen, teamMembers]);
+
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
@@ -70,8 +134,25 @@ const Tasks = ({ project, teamName, onUpdateTasks }) => {
     });
 
     setTasks(nextTasks);
-    if (onUpdateTasks) {
-      onUpdateTasks(nextTasks);
+    if (onUpdateTasks && project) {
+      onUpdateTasks(nextTasks, project.id);
+    }
+  };
+
+  const handleDeleteTask = async (id) => {
+    try {
+      if (project) {
+        await api.deleteTask(project.id, id);
+        const nextTasks = tasks.filter(t => t.id !== id);
+        setTasks(nextTasks);
+        if (onUpdateTasks) {
+          onUpdateTasks(nextTasks, project.id);
+        }
+        showToast('Task deleted successfully!', 'success');
+      }
+    } catch (err) {
+      console.error('Failed to delete task via API:', err);
+      showToast('Failed to delete task. Please try again.', 'error');
     }
   };
 
@@ -91,15 +172,19 @@ const Tasks = ({ project, teamName, onUpdateTasks }) => {
       status: 'Pending'
     };
 
-    const nextTasks = [...tasks, newTask];
-    setTasks(nextTasks);
-    if (onUpdateTasks) {
-      onUpdateTasks(nextTasks);
+    if (selectedModalProject && project && selectedModalProject.id === project.id) {
+      const nextTasks = [...tasks, newTask];
+      setTasks(nextTasks);
+    }
+    
+    if (onUpdateTasks && selectedModalProject) {
+      const nextTasks = [...(selectedModalProject.tasks || []), newTask];
+      onUpdateTasks(nextTasks, selectedModalProject.id);
     }
 
     showToast('Task assigned successfully!', 'success');
     setModalOpen(false);
-    setFormData({ name: '', student: teamMembers[0] || '', priority: 'High', deadline: '', description: '' });
+    setFormData({ name: '', student: '', priority: 'High', deadline: '', description: '' });
   };
 
   const getPriorityBadge = (priority) => {
@@ -181,19 +266,41 @@ const Tasks = ({ project, teamName, onUpdateTasks }) => {
               </div>
 
               {/* Assignee info */}
-              <div className="flex items-center gap-2 text-xs text-brand-text-muted">
-                <FiUser className="w-3.5 h-3.5 text-cyan-500" />
-                <span>Assigned: <strong className="text-brand-text">{task.student}</strong></span>
+              <div className="flex items-center justify-between gap-2 text-xs text-brand-text-muted">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <FiUser className="w-3.5 h-3.5 text-cyan-500 flex-shrink-0" />
+                  <span className="truncate">
+                    Assigned: <strong className="text-brand-text">{task.student}</strong>
+                  </span>
+                </div>
+                {(task.projectName || project?.name) && (
+                  <span 
+                    className="text-[10px] font-bold text-primary bg-primary/5 px-2 py-0.5 rounded border border-primary/10 truncate max-w-[150px] flex-shrink-0" 
+                    title={task.projectName || project?.name}
+                  >
+                    {task.projectName || project?.name}
+                  </span>
+                )}
               </div>
 
               {/* Priority & Deadline tags */}
-              <div className="flex items-center gap-4 text-[10px] font-semibold pt-1 border-t border-brand-border/40 text-brand-text-muted">
-                <span className={`px-2 py-0.2 rounded border uppercase font-extrabold ${getPriorityBadge(task.priority)}`}>
-                  {task.priority} Priority
-                </span>
-                <span className="flex items-center gap-1">
-                  <FiClock className="w-3.5 h-3.5" /> Due: {task.deadline}
-                </span>
+              <div className="flex items-center justify-between pt-1 border-t border-brand-border/40 text-brand-text-muted">
+                <div className="flex items-center gap-4 text-[10px] font-semibold">
+                  <span className={`px-2 py-0.2 rounded border uppercase font-extrabold ${getPriorityBadge(task.priority)}`}>
+                    {task.priority} Priority
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <FiClock className="w-3.5 h-3.5" /> Due: {task.deadline}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteTask(task.id)}
+                  className="p-1.5 rounded-lg border border-rose-500/20 text-rose-500 hover:bg-rose-500/10 hover:border-rose-500/40 transition-all duration-300 cursor-pointer"
+                  title="Delete Task"
+                >
+                  <FiTrash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
 
               {/* Submitted Report Details */}
@@ -267,6 +374,29 @@ const Tasks = ({ project, teamName, onUpdateTasks }) => {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {projects.length > 0 && (
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Select Project / Team</label>
+                  <select
+                    value={selectedModalProject?.id || ''}
+                    onChange={(e) => {
+                      const selectedProjId = e.target.value;
+                      const matchedProj = projects.find(p => p.id === selectedProjId);
+                      if (matchedProj) {
+                        setSelectedModalProject(matchedProj);
+                      }
+                    }}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 focus:outline-none focus:border-primary/50 text-sm cursor-pointer"
+                  >
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.teamName || 'No Team'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Task Name</label>
                 <input

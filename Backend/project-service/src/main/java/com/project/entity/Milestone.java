@@ -1,0 +1,38 @@
+package com.project.entity;
+
+import org.springframework.data.annotation.Id;
+import java.time.LocalDate;
+
+public class Milestone {
+    @Id
+    private String id;
+    private String name;
+    private LocalDate dueDate;
+    private Integer progress = 0; // 0 to 100
+    private String status = "Pending"; // Completed, Pending
+
+    public Milestone() {}
+
+    public Milestone(String id, String name, LocalDate dueDate, Integer progress, String status) {
+        this.id = id;
+        this.name = name;
+        this.dueDate = dueDate;
+        this.progress = progress;
+        this.status = status;
+    }
+
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
+    public LocalDate getDueDate() { return dueDate; }
+    public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
+
+    public Integer getProgress() { return progress; }
+    public void setProgress(Integer progress) { this.progress = progress; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FiUser, FiMail, FiLock, FiEye, FiEyeOff, FiChevronDown, FiAlertCircle, FiBookOpen, FiGrid, FiX } from 'react-icons/fi';
 import PasswordRequirements from './PasswordRequirements';
 import { usePage } from '../hooks/usePage';
+import { api } from '../utils/api';
 
 const SignupForm = ({ showTerms, setShowTerms }) => {
   const { navigateTo } = usePage();
@@ -136,53 +137,47 @@ const SignupForm = ({ showTerms, setShowTerms }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (validateForm()) {
-      // 1. Add to registeredUsers database
       try {
-        const storedUsers = localStorage.getItem('registeredUsers');
-        const users = storedUsers ? JSON.parse(storedUsers) : [];
+        const dept = formData.department === 'Other' ? formData.otherDepartment : formData.department;
         
-        // Avoid duplicate emails
-        if (!users.some(u => u.email.toLowerCase() === formData.email.toLowerCase())) {
-          users.push({
-            id: `usr-${Date.now()}`,
-            fullName: formData.fullName,
-            email: formData.email,
-            password: formData.password,
-            role: formData.role === 'Student' ? 'Student' : formData.role === 'Team Leader' ? 'Team Leader' : 'Mentor',
+        // Register via the backend API
+        await api.register(formData.fullName, formData.email, formData.password, formData.role);
+
+        // Auto-login to generate token session
+        await api.login(formData.email, formData.password);
+
+        // Sync users list to local storage
+        try {
+          const users = await api.listUsers();
+          const mappedUsers = (users || []).map(u => ({
+            id: u.id,
+            fullName: u.name,
+            email: u.email,
+            role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
             collegeName: formData.collegeName,
-            department: formData.department === 'Other' ? formData.otherDepartment : formData.department,
+            department: u.department || dept,
             status: 'Active',
-            avatarInitials: formData.fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
-            avatarBg: 'bg-primary/20 text-primary',
-            team: 'Not Assigned'
-          });
-          localStorage.setItem('registeredUsers', JSON.stringify(users));
+            team: u.team || 'Not Assigned'
+          }));
+          localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
+        } catch (err) {
+          console.warn('Syncing users failed:', err);
+        }
+
+        if (formData.role === 'Student') {
+          navigateTo('student');
+        } else if (formData.role === 'Team Leader') {
+          navigateTo('team-leader');
+        } else if (formData.role === 'Mentor') {
+          navigateTo('mentor');
+        } else {
+          navigateTo('landing');
         }
       } catch (err) {
-        console.error("Failed to save to registeredUsers", err);
-      }
-
-      // 2. Save active currentUser session
-      const mappedRole = formData.role === 'Student' ? 'Student' : formData.role === 'Team Leader' ? 'Team Leader' : 'Mentor';
-      localStorage.setItem('currentUser', JSON.stringify({
-        fullName: formData.fullName,
-        email: formData.email,
-        role: mappedRole,
-        collegeName: formData.collegeName,
-        department: formData.department === 'Other' ? formData.otherDepartment : formData.department
-      }));
-
-      if (formData.role === 'Student') {
-        navigateTo('student');
-      } else if (formData.role === 'Team Leader') {
-        navigateTo('team-leader');
-      } else if (formData.role === 'Mentor') {
-        navigateTo('mentor');
-      } else {
-        navigateTo('landing');
+        setErrors(prev => ({ ...prev, global: err.message || 'Registration failed. Please try again.' }));
       }
     }
   };
@@ -368,6 +363,13 @@ const SignupForm = ({ showTerms, setShowTerms }) => {
   return (
     <form onSubmit={handleSubmit} className="space-y-5 text-left">
       
+      {/* Global errors */}
+      {errors.global && (
+        <div className="p-3 rounded-xl border border-rose-500/20 bg-rose-50/10 text-rose-500 text-xs font-semibold flex items-center gap-2">
+          <FiAlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span>{errors.global}</span>
+        </div>
+      )}
       {/* 1. Full Name Input */}
       <div>
         <label className="text-xs font-bold uppercase tracking-wider text-brand-text-muted mb-2 block">

@@ -1,43 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { FiMail, FiLock, FiEye, FiEyeOff, FiChevronDown, FiAlertCircle } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
-import { initialUsers } from '../utils/mockData';
+import { api } from '../utils/api';
 
 const LoginForm = () => {
   const { navigateTo } = usePage();
-
-  // Seed default users if registeredUsers database is empty in localStorage
-  useEffect(() => {
-    try {
-      const storedUsers = localStorage.getItem('registeredUsers');
-      if (!storedUsers) {
-        const seeded = initialUsers.map(u => {
-          let roleMapped = 'Student';
-          if (u.role === 'Mentor') {
-            roleMapped = 'Mentor';
-          } else if (u.role.includes('Leader')) {
-            roleMapped = 'Team Leader';
-          }
-          return {
-            id: u.id,
-            fullName: u.name,
-            email: u.email.toLowerCase(),
-            password: 'password', // Default testing password
-            role: roleMapped,
-            collegeName: 'ProjectPilot University',
-            department: 'Computer Science & Engineering',
-            status: u.status || 'Active',
-            avatarInitials: u.avatarInitials,
-            avatarBg: u.avatarBg,
-            team: u.team || 'Not Assigned'
-          };
-        });
-        localStorage.setItem('registeredUsers', JSON.stringify(seeded));
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  }, []);
 
   const [formData, setFormData] = useState({
     usernameOrEmail: '',
@@ -63,7 +30,7 @@ const LoginForm = () => {
     }
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     const newErrors = {};
 
@@ -83,77 +50,77 @@ const LoginForm = () => {
       return;
     }
 
-    // 1. Predefined Admin Check
-    const isPredefinedAdmin = 
-      (inputVal === 'admin_001' || inputVal === 'admin@pp.edu') && 
-      passwordVal === 'ADMIN';
-
-    if (isPredefinedAdmin) {
-      localStorage.setItem('currentUser', JSON.stringify({
-        fullName: 'Administrator',
-        email: 'admin@pp.edu',
-        role: 'System Administrator',
-        collegeName: 'ProjectPilot System',
-        department: 'Operations'
-      }));
-      navigateTo('admin');
-      return;
-    }
-
-    // 2. Check registeredUsers database in localStorage
-    let userExists = false;
-    let matchedUser = null;
     try {
-      const storedUsers = localStorage.getItem('registeredUsers');
-      if (storedUsers) {
-        const users = JSON.parse(storedUsers);
-        
-        // Find if user exists by email or username
-        const foundUser = users.find(u => 
-          u.email.toLowerCase() === inputVal || 
-          u.fullName.toLowerCase().replace(/\s+/g, '_') === inputVal
-        );
-        
-        if (foundUser) {
-          userExists = true;
-          if (foundUser.password === passwordVal) {
-            matchedUser = foundUser;
-          }
-        }
+      // Authenticate via the backend API!
+      const { user } = await api.login(inputVal, passwordVal);
+
+      // On successful login, sync users and projects into local cache
+      try {
+        const projects = await api.listProjects();
+        localStorage.setItem('projects', JSON.stringify(projects || []));
+      } catch (err) {
+        console.warn('Syncing projects failed:', err);
       }
-    } catch (err) {
-      console.error(err);
-    }
 
-    if (userExists && !matchedUser) {
-      setErrors({ global: 'Invalid password. Please check your credentials.' });
-      return;
-    }
+      try {
+        const users = await api.listUsers();
+        // Map backend users to UI fields (e.g. name to fullName)
+        const mappedUsers = (users || []).map(u => ({
+          id: u.id,
+          fullName: u.name,
+          email: u.email,
+          role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+          collegeName: 'ProjectPilot University',
+          department: u.department || 'Computer Science & Engineering',
+          status: 'Active',
+          team: u.team || 'Not Assigned'
+        }));
+        localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
 
-    if (matchedUser) {
-      const role = matchedUser.role; // 'Student', 'Team Leader', 'Mentor'
-      const mappedRole = role === 'Student' ? 'Student' : role === 'Team Leader' ? 'Team Leader' : 'Mentor';
-      
-      localStorage.setItem('currentUser', JSON.stringify({
-        fullName: matchedUser.fullName,
-        email: matchedUser.email,
-        role: mappedRole,
-        collegeName: matchedUser.collegeName || 'ProjectPilot University',
-        department: matchedUser.department || 'Computer Science & Engineering'
-      }));
+        // Sync the logged-in currentUser's team details
+        const myUserRecord = mappedUsers.find(u => u.email.toLowerCase() === user.email?.toLowerCase());
+        if (myUserRecord) {
+          user.team = myUserRecord.team || 'Not Assigned';
+          localStorage.setItem('currentUser', JSON.stringify(user));
+        }
+      } catch (err) {
+        console.warn('Syncing users failed:', err);
+      }
 
-      if (role === 'Mentor') {
+      if (user.role === 'System Administrator') {
+        navigateTo('admin');
+      } else if (user.role === 'Mentor') {
         navigateTo('mentor');
-      } else if (role === 'Team Leader') {
+      } else if (user.role === 'Team Leader') {
         navigateTo('team-leader');
       } else {
         navigateTo('student');
       }
-      return;
+    } catch (err) {
+      let friendlyMessage = 'Invalid credentials. Please check your username/password.';
+      try {
+        // Parse raw JSON errors from spring boot/auth backend
+        const parsed = JSON.parse(err.message);
+        if (parsed.message) {
+          if (parsed.message.toLowerCase() === 'bad credentials') {
+            friendlyMessage = 'Invalid email or password. Please try again.';
+          } else {
+            friendlyMessage = parsed.message;
+          }
+        } else if (parsed.error) {
+          if (parsed.error === 'Bad Request') {
+            friendlyMessage = 'Invalid login details. Please check your username/email and password credentials.';
+          } else {
+            friendlyMessage = parsed.error;
+          }
+        }
+      } catch (e) {
+        if (err.message && !err.message.includes('{')) {
+          friendlyMessage = err.message;
+        }
+      }
+      setErrors({ global: friendlyMessage });
     }
-
-    // If user does not exist in registeredUsers and is not admin
-    setErrors({ global: 'Invalid credentials. Please check your username/password.' });
   };
 
 

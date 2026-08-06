@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { FiSearch } from 'react-icons/fi';
+import React, { useState, useEffect } from 'react';
+import { FiSearch, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import TeamsTable from '../components/TeamsTable';
 
 const Teams = ({ 
@@ -9,6 +9,8 @@ const Teams = ({
   onDeleteTeam
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // Filter logic based on search only (Mentor dropdown removed)
   const filteredTeams = teams.filter((team) => {
@@ -18,6 +20,14 @@ const Teams = ({
       team.leaderName.toLowerCase().includes(searchQuery.toLowerCase())
     );
   });
+
+  // Reset page to 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  const totalPages = Math.ceil(filteredTeams.length / itemsPerPage);
+  const paginatedTeams = filteredTeams.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <div className="space-y-6 w-full text-left">
@@ -50,14 +60,43 @@ const Teams = ({
       </div>
 
       {/* Main Teams Table Display */}
-      <div className="p-4 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-md">
-        {filteredTeams.length > 0 ? (
-          <TeamsTable 
-            teams={filteredTeams} 
-            onOpenAssignModal={onOpenAssignModal} 
-            onViewTeam={onViewTeam}
-            onDeleteTeam={onDeleteTeam}
-          />
+      <div className="p-4 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-md space-y-4">
+        {paginatedTeams.length > 0 ? (
+          <>
+            <TeamsTable 
+              teams={paginatedTeams} 
+              onOpenAssignModal={onOpenAssignModal} 
+              onViewTeam={onViewTeam}
+              onDeleteTeam={onDeleteTeam}
+            />
+            
+            {/* Pagination controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-brand-border/40 pt-4 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="px-3.5 py-1.5 rounded-xl border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-200/50 dark:hover:bg-slate-800/50 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-all duration-300 inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <FiChevronLeft className="w-4 h-4" />
+                  <span>Back</span>
+                </button>
+                <span className="text-xs font-extrabold tracking-wider uppercase text-brand-text-muted">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="px-3.5 py-1.5 rounded-xl border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-200/50 dark:hover:bg-slate-800/50 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-all duration-300 inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Next</span>
+                  <FiChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="py-12 text-center text-sm text-brand-text-muted">
             No teams found matching the search query.

@@ -17,11 +17,27 @@ const GithubContributionCard = ({ github = {} }) => {
   const repoUrl = github.repoUrl || '';
   const seed = getHash(repoUrl || 'default-seed');
 
-  // If repoUrl exists, generate stats based on it. Otherwise fall back to pre-set mock values.
-  const commits = repoUrl ? (seed % 120) + 40 : (github.commits || 0);
-  const prs = repoUrl ? (seed % 10) + 2 : (github.prs || 0);
-  const issues = repoUrl ? (seed % 12) + 4 : (github.issuesClosed || 0);
-  const contributionPercentage = repoUrl ? (seed % 20) + 35 : (github.contributionPercentage || 0);
+  // Use the actual database values directly, no mock overrides
+  const commits = github.commits || 0;
+  const prs = github.prs || 0;
+  const issues = github.issuesClosed || github.issues || 0;
+  const contributionPercentage = github.contributionPercentage || 0;
+
+  if (!repoUrl) {
+    return (
+      <div className="rounded-2xl border border-brand-border bg-brand-card overflow-hidden shadow-md transition-all duration-300 h-full p-6 text-center flex flex-col items-center justify-center min-h-[220px]">
+        <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/50 text-brand-text-muted border border-brand-border mb-3">
+          <FiGithub className="w-6 h-6 animate-pulse" />
+        </div>
+        <h3 className="text-xs font-extrabold uppercase tracking-widest text-brand-text mb-1">
+          GitHub Contribution
+        </h3>
+        <p className="text-[11px] leading-relaxed text-brand-text-muted max-w-[280px]">
+          No GitHub repository has been linked to this project yet. Edit project details to add a repository URL.
+        </p>
+      </div>
+    );
+  }
 
   // Generate mock heatmap grouped by monthly blocks (Jul 2025 to Jun 2026)
   const renderHeatmap = () => {
@@ -57,7 +73,7 @@ const GithubContributionCard = ({ github = {} }) => {
             for (let r = 0; r < 7; r++) {
               // Deterministic pseudo-random value based on repoUrl seed and cell coordinates
               const cellSeed = (seed + mIdx * 137 + c * 47 + r * 19) % 100;
-              const hasCommit = cellSeed < (activityWeight * 100);
+              const hasCommit = commits > 0 && cellSeed < (activityWeight * 100);
               let submissions = 0;
               
               // Default inactive GitHub style colors

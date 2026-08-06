@@ -18,25 +18,6 @@ const WeeklyReports = ({ project, teamName, onSubmitReport }) => {
         fileUrl: r.fileUrl
       }));
     }
-    if (teamName === 'Team Alpha') {
-      return [
-        { id: 'rep-1', week: 'Week 4', title: 'Sprint 4 Integration Tests', submissionDate: '2026-06-28', status: 'Submitted', reviewStatus: 'Pending', feedback: 'Awaiting feedback.' },
-        { id: 'rep-2', week: 'Week 3', title: 'Sprint 3 API Hooks Setup', submissionDate: '2026-06-21', status: 'Submitted', reviewStatus: 'Reviewed', feedback: 'Review completed. Latency metrics meet platform specs.' },
-        { id: 'rep-3', week: 'Week 2', title: 'Sprint 2 Model Optimizations', submissionDate: '2026-06-14', status: 'Submitted', reviewStatus: 'Reviewed', feedback: 'Accuracy rates verified. Optimizations completed.' },
-        { id: 'rep-4', week: 'Week 1', title: 'Sprint 1 Core Database Schemas', submissionDate: '2026-06-07', status: 'Submitted', reviewStatus: 'Reviewed', feedback: 'Database architecture validated.' }
-      ];
-    }
-    if (teamName === 'Team Beta') {
-      return [
-        { id: 'rep-1', week: 'Week 3', title: 'Sprint 3 U-Net Train Logs', submissionDate: '2026-06-25', status: 'Submitted', reviewStatus: 'Reviewed', feedback: 'Loss curve is stable. Model validated.' },
-        { id: 'rep-2', week: 'Week 2', title: 'Sprint 2 Boundary Loss Tests', submissionDate: '2026-06-18', status: 'Submitted', reviewStatus: 'Reviewed', feedback: 'Boundary loss weights updated.' }
-      ];
-    }
-    if (teamName === 'Team Gamma') {
-      return [
-        { id: 'rep-1', week: 'Week 2', title: 'Sprint 2 GATT Profile Setup', submissionDate: '2026-06-20', status: 'Submitted', reviewStatus: 'Reviewed', feedback: 'BLE profiles compiled successfully.' }
-      ];
-    }
     return [];
   });
 

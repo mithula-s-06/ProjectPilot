@@ -50,7 +50,7 @@ const ProjectCard = ({ project, onViewDetails, onEdit, onDelete }) => {
         {/* Mentor Row */}
         <div className="flex items-center gap-2 text-xs text-brand-text-muted font-medium">
           <FiUser className="w-3.5 h-3.5 text-primary" />
-          <span>Mentor: <strong className="text-brand-text">{!project.mentor || project.mentor === 'Not Assigned' ? 'Dr. Kumar' : project.mentor}</strong></span>
+          <span>Mentor: <strong className="text-brand-text">{!project.mentor ? 'Not Assigned' : project.mentor}</strong></span>
         </div>
 
         {/* Health Index Row */}

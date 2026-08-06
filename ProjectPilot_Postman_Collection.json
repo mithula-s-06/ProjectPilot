@@ -1,0 +1,329 @@
+{
+  "info": {
+    "name": "ProjectPilot API Collection",
+    "description": "Postman Collection for testing all APIs of ProjectPilot microservices. Uses dynamic authentication token variables.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "token",
+      "value": "PASTE_YOUR_JWT_TOKEN_HERE",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication & Users (Port 8081)",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ankit Sharma\",\n  \"email\": \"ankit.s@pp.edu\",\n  \"password\": \"PASSWORD\",\n  \"role\": \"STUDENT\"\n}"
+            },
+            "url": "http://localhost:8081/api/auth/register"
+          }
+        },
+        {
+          "name": "Login User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ankit.s@pp.edu\",\n  \"password\": \"PASSWORD\"\n}"
+            },
+            "url": "http://localhost:8081/api/auth/login"
+          }
+        },
+        {
+          "name": "Current Session Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "http://localhost:8081/api/users/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. User Profiles CRUD (Port 8082)",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "http://localhost:8082/api/users"
+          }
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Jane Doe\",\n  \"email\": \"jane.doe@pp.edu\",\n  \"password\": \"PASSWORD\",\n  \"collegeName\": \"ABC Engineering College\",\n  \"department\": \"Computer Science\",\n  \"role\": \"STUDENT\"\n}"
+            },
+            "url": "http://localhost:8082/api/users"
+          }
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Jane Doe Updated\",\n  \"email\": \"jane.doe@pp.edu\",\n  \"password\": \"NEWPASSWORD\",\n  \"collegeName\": \"ABC Engineering College\",\n  \"department\": \"Information Technology\",\n  \"role\": \"TEAM_LEADER\"\n}"
+            },
+            "url": "http://localhost:8082/api/users/REPLACE_WITH_USER_ID"
+          }
+        },
+        {
+          "name": "Delete User",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "http://localhost:8082/api/users/REPLACE_WITH_USER_ID"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Projects Management (Port 8082)",
+      "item": [
+        {
+          "name": "List Projects",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "http://localhost:8082/api/projects"
+          }
+        },
+        {
+          "name": "Get Project by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "http://localhost:8082/api/projects/REPLACE_WITH_PROJECT_ID"
+          }
+        },
+        {
+          "name": "Create Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"AI Attendance System\",\n  \"domain\": \"Machine Learning\",\n  \"phase\": \"Implementation Phase\",\n  \"mentorName\": \"Dr. Kumar\",\n  \"description\": \"Real-time attendance facial recognition tracker.\"\n}"
+            },
+            "url": "http://localhost:8082/api/projects"
+          }
+        },
+        {
+          "name": "Update Project",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"AI Attendance System\",\n  \"domain\": \"Computer Vision\",\n  \"health\": 98,\n  \"phase\": \"Testing Phase\",\n  \"mentorName\": \"Dr. Kumar\",\n  \"progress\": 90,\n  \"status\": \"Healthy\",\n  \"description\": \"Optimized WebGL CNN real-time attendance tracker.\"\n}"
+            },
+            "url": "http://localhost:8082/api/projects/REPLACE_WITH_PROJECT_ID"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Teams Management (Port 8082)",
+      "item": [
+        {
+          "name": "List Teams",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "http://localhost:8082/api/teams"
+          }
+        },
+        {
+          "name": "Create Team",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Team Alpha\",\n  \"projectId\": \"REPLACE_WITH_PROJECT_ID\",\n  \"projectName\": \"AI Attendance System\",\n  \"mentorName\": \"Dr. Kumar\",\n  \"leaderName\": \"Ankit Sharma\",\n  \"membersCount\": 4\n}"
+            },
+            "url": "http://localhost:8082/api/teams"
+          }
+        },
+        {
+          "name": "Update Team",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Team Alpha\",\n  \"mentorName\": \"Prof. Sharma\",\n  \"health\": 96,\n  \"membersCount\": 5,\n  \"status\": \"Excellent\",\n  \"rank\": 1\n}"
+            },
+            "url": "http://localhost:8082/api/teams/REPLACE_WITH_TEAM_ID"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Tasks Operations (Port 8082)",
+      "item": [
+        {
+          "name": "Add Task to Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Optimize CNN model using WASM\",\n  \"deadline\": \"2026-08-15\",\n  \"priority\": \"High\"\n}"
+            },
+            "url": "http://localhost:8082/api/projects/REPLACE_WITH_PROJECT_ID/tasks"
+          }
+        },
+        {
+          "name": "Update Project Task",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Optimize CNN model using WASM\",\n  \"deadline\": \"2026-08-15\",\n  \"priority\": \"High\",\n  \"status\": \"Completed\"\n}"
+            },
+            "url": "http://localhost:8082/api/projects/REPLACE_WITH_PROJECT_ID/tasks/REPLACE_WITH_TASK_ID"
+          }
+        },
+        {
+          "name": "Delete Project Task",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "http://localhost:8082/api/projects/REPLACE_WITH_PROJECT_ID/tasks/REPLACE_WITH_TASK_ID"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Milestones (Port 8082)",
+      "item": [
+        {
+          "name": "Add Milestone to Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Deploy CNN to Cloud Server\",\n  \"dueDate\": \"2026-08-30\"\n}"
+            },
+            "url": "http://localhost:8082/api/projects/REPLACE_WITH_PROJECT_ID/milestones"
+          }
+        },
+        {
+          "name": "Update Milestone",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Deploy CNN to Cloud Server\",\n  \"dueDate\": \"2026-08-30\",\n  \"progress\": 100,\n  \"status\": \"Completed\"\n}"
+            },
+            "url": "http://localhost:8082/api/projects/REPLACE_WITH_PROJECT_ID/milestones/REPLACE_WITH_MILESTONE_ID"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Reports & Reviews (Port 8082)",
+      "item": [
+        {
+          "name": "Submit Weekly Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"week\": \"Week 4 (Sprint 3 Summary)\",\n  \"remarks\": \"Sprint 3 finished successfully. Ready for evaluation.\",\n  \"fileUrl\": \"https://drive.google.com/test-sprint3-doc\"\n}"
+            },
+            "url": "http://localhost:8082/api/projects/REPLACE_WITH_PROJECT_ID/reports"
+          }
+        },
+        {
+          "name": "Review Weekly Report",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"remarks\": \"Excellent work. Model precision matches target. Approved.\",\n  \"submissionStatus\": \"Approved\"\n}"
+            },
+            "url": "http://localhost:8082/api/projects/REPLACE_WITH_PROJECT_ID/reports/REPLACE_WITH_REPORT_ID/review"
+          }
+        }
+      ]
+    }
+  ]
+}

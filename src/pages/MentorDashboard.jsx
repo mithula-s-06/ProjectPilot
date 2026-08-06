@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FiX, FiArrowRight } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
+import { api } from '../utils/api';
 import MentorNavbar from '../components/MentorNavbar';
 import MentorSidebar from '../components/MentorSidebar';
 import OverviewCards from '../components/OverviewCards';
@@ -19,7 +20,7 @@ import NotificationsPage from './NotificationsPage';
 import ChatGuru from './ChatGuru';
 
 // Mock datasets
-import { initialTeams, initialNotifications } from '../utils/mockData';
+// Clear mock data imports
 
 const MentorDashboard = () => {
   const { navigateTo } = usePage();
@@ -69,48 +70,58 @@ const MentorDashboard = () => {
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
   const [selectedRiskTeam, setSelectedRiskTeam] = useState(null);
-  const [notifications, setNotifications] = useState(initialNotifications);
+  const [notifications, setNotifications] = useState([]);
 
   React.useEffect(() => {
-    const handleFocus = () => {
+    const handleFocus = async () => {
       try {
+        const fetchedProj = await api.listProjects();
+        localStorage.setItem('projects', JSON.stringify(fetchedProj || []));
+
+        const fetchedUsers = await api.listUsers();
+        const mappedUsers = (fetchedUsers || []).map(u => ({
+          id: u.id,
+          fullName: u.name,
+          email: u.email,
+          role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+          collegeName: 'ProjectPilot University',
+          department: u.department || 'Computer Science & Engineering',
+          status: 'Active',
+          team: u.team || 'Not Assigned'
+        }));
+        localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
+
         const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
         const loggedInMentorName = currentUser.fullName || currentUser.name || 'Dr. Kumar';
         
-        const storedProj = localStorage.getItem('projects');
-        const storedUsers = localStorage.getItem('registeredUsers');
-        if (storedProj) {
-          const registeredUsers = storedUsers ? JSON.parse(storedUsers) : [];
-          const projects = JSON.parse(storedProj);
+        const mentorProjects = (fetchedProj || []).filter(p => p.mentor && p.mentor.toLowerCase() === loggedInMentorName.toLowerCase());
 
-          const mentorProjects = projects.filter(p => p.mentor && p.mentor.toLowerCase() === loggedInMentorName.toLowerCase());
+        const activeTeamsList = mentorProjects.map((p, idx) => {
+          const members = mappedUsers.filter(u => u.team && u.team.toLowerCase() === p.teamName?.toLowerCase());
+          const leader = mappedUsers.find(u => u.team && u.team.toLowerCase() === p.teamName?.toLowerCase() && u.role === 'Team Leader');
+          
+          return {
+            id: p.id || `team-${idx}`,
+            rank: idx + 1,
+            name: p.teamName || `${loggedInMentorName} Team`,
+            project: p.name,
+            health: p.health || 80,
+            mentor: p.mentor,
+            status: p.health >= 95 ? 'Excellent' : p.health >= 80 ? 'Very Good' : p.health >= 60 ? 'Good' : 'Poor',
+            membersCount: members.length,
+            leaderName: leader ? (leader.fullName || leader.name) : 'Not Assigned',
+            progress: p.progress || 0,
+            domain: p.domain || 'General'
+          };
+        });
 
-          const activeTeamsList = mentorProjects.map((p, idx) => {
-            const members = registeredUsers.filter(u => u.team && u.team.toLowerCase() === p.teamName?.toLowerCase());
-            const leader = registeredUsers.find(u => u.team && u.team.toLowerCase() === p.teamName?.toLowerCase() && u.role === 'Team Leader');
-            
-            return {
-              id: p.id || `team-${idx}`,
-              rank: idx + 1,
-              name: p.teamName || `${loggedInMentorName} Team`,
-              project: p.name,
-              health: p.health || 80,
-              mentor: p.mentor,
-              status: p.health >= 95 ? 'Excellent' : p.health >= 80 ? 'Very Good' : p.health >= 60 ? 'Good' : 'Poor',
-              membersCount: members.length,
-              leaderName: leader ? (leader.fullName || leader.name) : 'Not Assigned',
-              progress: p.progress || 0,
-              domain: p.domain || 'General'
-            };
-          });
-
-          setTeams(activeTeamsList);
-        }
+        setTeams(activeTeamsList);
       } catch (err) {
         console.error(err);
       }
     };
 
+    handleFocus();
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, []);
@@ -268,6 +279,14 @@ const MentorDashboard = () => {
         });
 
         localStorage.setItem('projects', JSON.stringify(updated));
+        // Sync report review updates back to MongoDB
+        updated.forEach(async (p) => {
+          try {
+            await api.updateProject(p.id, p);
+          } catch (err) {
+            console.warn('Syncing project report review failed:', err);
+          }
+        });
         
         setSelectedReport(prev => {
           if (prev && prev.id === reportId) {
@@ -352,6 +371,14 @@ const MentorDashboard = () => {
           return p;
         });
         localStorage.setItem('projects', JSON.stringify(updated));
+        // Sync project status / mentor feedback back to MongoDB
+        updated.forEach(async (p) => {
+          try {
+            await api.updateProject(p.id, p);
+          } catch (err) {
+            console.warn('Syncing project feedback failed:', err);
+          }
+        });
 
         // Create notifications for all students/team leaders belonging to this team!
         if (targetTeamName) {
@@ -540,7 +567,7 @@ const MentorDashboard = () => {
               onClick={() => setMobileSidebarOpen(false)}
               className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity duration-300"
             />
-            <aside className="md:hidden fixed inset-y-0 left-0 w-64 bg-brand-card/95 border-r border-brand-border p-5 z-50 flex flex-col justify-between shadow-2xl animate-slide-right">
+            <aside className="md:hidden fixed inset-y-0 left-0 w-64 bg-brand-card border-r border-brand-border p-5 z-50 flex flex-col justify-between shadow-2xl animate-slide-right">
               <div className="space-y-6">
                 
                 {/* Brand title */}
