@@ -1,8 +1,7 @@
 import { 
   FiHome, FiFolder, FiUsers, FiCheckSquare, 
   FiTarget, FiFileText, FiBarChart2, FiSettings, 
-  FiUser, FiLogOut, FiChevronLeft, FiChevronRight,
-  FiCpu
+  FiUser, FiLogOut, FiChevronLeft, FiChevronRight
 } from 'react-icons/fi';
 
 const TeamLeaderSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLogout }) => {
@@ -15,7 +14,6 @@ const TeamLeaderSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, o
     { id: 'milestones', label: 'Milestones', icon: <FiTarget className="w-5 h-5" /> },
     { id: 'reports', label: 'Weekly Reports', icon: <FiFileText className="w-5 h-5" /> },
     { id: 'performance', label: 'Performance', icon: <FiBarChart2 className="w-5 h-5" /> },
-    { id: 'chat-guru', label: 'Chat Guru', icon: <FiCpu className="w-5 h-5 text-indigo-500" /> },
   ];
 
   const bottomMenuItems = [
@@ -57,13 +55,13 @@ const TeamLeaderSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, o
       }`}
     >
       {/* Top Menu list */}
-      <div className="space-y-1.5 overflow-y-auto custom-scrollbar pr-0.5">
+      <div className="space-y-1.5 overflow-y-auto custom-scrollbar pr-0.5 pt-1">
         {mainMenuItems.map(renderMenuItem)}
       </div>
 
       {/* Bottom Menu list */}
-      <div className="space-y-4 pt-4 border-t border-brand-border/40 flex-shrink-0">
-        <div className="space-y-1.5">
+      <div className="space-y-4 pb-8 flex-shrink-0">
+        <div className="space-y-1.5 border-t border-brand-border/40 pt-4">
           {bottomMenuItems.map(renderMenuItem)}
           
           {/* Logout */}
@@ -79,16 +77,6 @@ const TeamLeaderSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, o
                 Logout
               </span>
             )}
-          </button>
-        </div>
-
-        {/* Expand/Collapse sidebar trigger */}
-        <div className="border-t border-brand-border pt-3 flex justify-end">
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="p-1.5 rounded-lg border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors duration-300 focus:outline-none cursor-pointer"
-          >
-            {collapsed ? <FiChevronRight className="w-4 h-4" /> : <FiChevronLeft className="w-4 h-4" />}
           </button>
         </div>
       </div>

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { FiX, FiArrowRight } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
-import { api } from '../utils/api';
+import { api, seedHistoricalNotifications, addNotification } from '../utils/api';
+import { checkDeadlineReminders } from '../utils/reminders';
 import TeamLeaderNavbar from '../components/TeamLeaderNavbar';
 import TeamLeaderSidebar from '../components/TeamLeaderSidebar';
-import AIInsights from '../components/AIInsights';
 
 // Pages
 import Projects from './Projects';
@@ -18,7 +18,6 @@ import Settings from './Settings';
 import Profile from './Profile';
 import NotificationsPage from './NotificationsPage';
 import SubmitReport from './SubmitReport';
-import ChatGuru from './ChatGuru';
 
 // Mock Notification list
 // Clear mock data imports
@@ -91,6 +90,44 @@ const TeamLeaderDashboard = () => {
     }
   });
   const [selectedProject, setSelectedProject] = useState(null);
+
+  const [memberMetrics, setMemberMetrics] = useState([]);
+
+  useEffect(() => {
+    async function loadMetrics() {
+      const activeTeam = selectedProject ? selectedProject.teamName : myTeamName;
+      if (activeTeam && activeTeam !== 'Not Assigned') {
+        try {
+          const metrics = await api.getMemberMetricsByTeam(activeTeam);
+          setMemberMetrics(metrics || []);
+        } catch (e) {
+          console.warn('Failed to load member metrics:', e);
+        }
+      }
+    }
+    loadMetrics();
+  }, [selectedProject, myTeamName, projects]);
+
+  const resolvedSelectedProject = React.useMemo(() => {
+    if (!selectedProject) return null;
+    
+    let totalCommits = 0;
+    let totalPRs = 0;
+    memberMetrics.forEach(m => {
+      totalCommits += m.commitsCount || 0;
+      totalPRs += m.prsCount || 0;
+    });
+    
+    return {
+      ...selectedProject,
+      github: {
+        ...(selectedProject.github || {}),
+        commits: totalCommits,
+        prs: totalPRs
+      }
+    };
+  }, [selectedProject, memberMetrics]);
+
   const [myTeamsList, setMyTeamsList] = useState([]);
   const myProject = selectedProject || projects[0] || null;
 
@@ -119,9 +156,12 @@ const TeamLeaderDashboard = () => {
       submissionStatus: 'Submitted',
       submittedDate: new Date().toISOString().split('T')[0],
       remarks: reportData.description,
+      commitsCount: reportData.commitsCount || 0,
+      prsCount: reportData.prsCount || 0,
       fileName: reportData.fileName,
       fileSize: reportData.fileSize,
-      fileUrl: reportData.fileUrl || '#'
+      fileUrl: reportData.fileUrl || '#',
+      fileId: reportData.fileId || null
     };
 
     const updatedTasks = (proj.tasks || []).map((t) => {
@@ -140,14 +180,91 @@ const TeamLeaderDashboard = () => {
       !updatedTasks.some(t => t.name === reportData.taskName && t.reportDetails && t.reportDetails.id === r.id)
     );
 
+    let overallCommits = 0;
+    let overallPRs = 0;
+    updatedTasks.forEach(t => {
+      if (t.reportDetails) {
+        overallCommits += parseInt(t.reportDetails.commitsCount || 0, 10);
+        overallPRs += parseInt(t.reportDetails.prsCount || 0, 10);
+      }
+    });
+
     const updatedProj = {
       ...proj,
       tasks: updatedTasks,
+      commits: overallCommits,
+      prs: overallPRs,
+      github: {
+        ...(proj.github || {}),
+        commits: overallCommits,
+        prs: overallPRs
+      },
       weeklyReports: [...cleanReports, newReport]
     };
 
+    const targetTask = updatedTasks.find(t => t.name === reportData.taskName);
+    const studentName = targetTask ? targetTask.student : '';
+    if (studentName) {
+      const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+      const studentUser = registeredUsers.find(u => 
+        u.fullName?.toLowerCase().trim() === studentName.toLowerCase().trim() || 
+        u.name?.toLowerCase().trim() === studentName.toLowerCase().trim()
+      );
+      const studentEmail = studentUser ? studentUser.email : '';
+      
+      let memberCommits = 0;
+      let memberPRs = 0;
+      updatedTasks.forEach(t => {
+        if (t.student && t.student.toLowerCase() === studentName.toLowerCase()) {
+          if (t.reportDetails) {
+            memberCommits += parseInt(t.reportDetails.commitsCount || 0, 10);
+            memberPRs += parseInt(t.reportDetails.prsCount || 0, 10);
+          }
+        }
+      });
+
+      try {
+        await api.saveOrUpdateMemberMetric({
+          memberName: studentName,
+          memberEmail: studentEmail,
+          teamName: proj.teamName,
+          commitsCount: memberCommits,
+          prsCount: memberPRs
+        });
+      } catch (metricErr) {
+        console.warn('Failed to save individual member metrics:', metricErr);
+      }
+    }
+
     try {
       const updated = await api.updateProject(projectId, updatedProj);
+
+      // Send task report uploaded notification to mentor
+      try {
+        const mentorName = proj.mentor;
+        if (mentorName && mentorName !== 'Not Assigned') {
+          const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+          const mentorUser = registeredUsers.find(u => 
+            (u.role === 'Mentor' || u.role === 'MENTOR') && 
+            (u.fullName?.trim().toLowerCase() === mentorName.trim().toLowerCase() || u.name?.trim().toLowerCase() === mentorName.trim().toLowerCase())
+          );
+          const mentorEmail = mentorUser ? mentorUser.email : null;
+          if (mentorEmail) {
+            const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+            const leaderName = currentUser.fullName || currentUser.name || 'Team Leader';
+            await addNotification(
+              'New Report Uploaded',
+              `Team leader "${leaderName}" uploaded a report for task "${reportData.taskName}" under project "${proj.name}".`,
+              mentorEmail,
+              proj.teamName,
+              'info'
+            );
+          }
+        }
+      } catch (notifErr) {
+        console.warn('Failed to send task report notification to mentor:', notifErr);
+      }
+
       setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
       if (selectedProject && selectedProject.id === updated.id) {
         setSelectedProject(updated);
@@ -160,6 +277,7 @@ const TeamLeaderDashboard = () => {
 
   const [notifications, setNotifications] = useState(() => {
     try {
+      seedHistoricalNotifications();
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
       const email = currentUser.email?.toLowerCase();
       
@@ -170,11 +288,58 @@ const TeamLeaderDashboard = () => {
 
       if (stored) {
         const parsed = JSON.parse(stored);
-        return parsed.filter(n => 
-          !n.targetEmail || 
-          n.targetEmail.toLowerCase() === email ||
-          (n.targetTeam && myTeamName && n.targetTeam.toLowerCase() === myTeamName.toLowerCase())
-        );
+        return parsed.filter(n => {
+          const isTargetEmail = n.targetEmail && n.targetEmail.toLowerCase() === email;
+          const isTargetTeam = !n.targetEmail && n.targetTeam && myTeamName && myTeamName.split(',').map(t => t.trim().toLowerCase()).includes(n.targetTeam.toLowerCase().trim());
+          const isGeneral = !n.targetEmail && !n.targetTeam;
+          
+          if (!(isTargetEmail || isTargetTeam || isGeneral)) return false;
+
+          const title = (n.title || '').toLowerCase();
+          const message = (n.message || '').toLowerCase();
+          
+          // Student notifications
+          const isStudentRule = (
+            title.includes('added') ||
+            message.includes('added as a team member') ||
+            title.includes('task assigned') ||
+            message.includes('assigned a task') ||
+            title.includes('milestone declared') ||
+            message.includes('milestone') ||
+            title.includes('approved') ||
+            title.includes('rejected') ||
+            title.includes('reassigned') ||
+            message.includes('approved') ||
+            message.includes('rejected') ||
+            title.includes('comment') ||
+            message.includes('comment') ||
+            title.includes('removed') ||
+            message.includes('removed from') ||
+            title.includes('profile updated') ||
+            title.includes('credentials changed') ||
+            message.includes('profile changed') ||
+            message.includes('data has been updated') ||
+            title.includes('mentor assigned') ||
+            message.includes('mentor has been assigned') ||
+            message.includes('academic mentor')
+          );
+          if (isStudentRule) return true;
+
+          // Extra Team Leader notifications
+          const isExtraLeaderRule = (
+            title.includes('task uploaded') ||
+            title.includes('report uploaded') ||
+            title.includes('new report') ||
+            message.includes('uploaded a report') ||
+            title.includes('reminder') ||
+            title.includes('near') ||
+            message.includes('due date') ||
+            message.includes('deadline') ||
+            message.includes('days left') ||
+            message.includes('prior')
+          );
+          return isExtraLeaderRule;
+        });
       } else {
         localStorage.setItem('notifications', JSON.stringify([]));
         return [];
@@ -186,6 +351,27 @@ const TeamLeaderDashboard = () => {
   });
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  const handleClearAllNotifications = async () => {
+    try {
+      for (const n of notifications) {
+        await api.deleteNotification(n.id);
+      }
+    } catch (err) {
+      console.warn('Failed to clear notifications on backend:', err);
+    }
+    try {
+      const stored = localStorage.getItem('notifications');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const remaining = parsed.filter(n => !notifications.some(vn => vn.id === n.id));
+        localStorage.setItem('notifications', JSON.stringify(remaining));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setNotifications([]);
+  };
 
   const saveProjectsToStorage = async (updatedProjectsList) => {
     try {
@@ -238,7 +424,7 @@ const TeamLeaderDashboard = () => {
           fullName: u.name,
           email: u.email,
           role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
-          collegeName: 'ProjectPilot University',
+          collegeName: u.collegeName || '',
           department: u.department || 'Computer Science & Engineering',
           status: 'Active',
           team: u.team || 'Not Assigned'
@@ -266,8 +452,22 @@ const TeamLeaderDashboard = () => {
         setMyTeamsList(filteredMyTeams);
 
         // Sync currentUser local storage team value
+        let needsUpdate = false;
         if (currentUser.team !== fetchedTeamName) {
           currentUser.team = fetchedTeamName;
+          needsUpdate = true;
+        }
+        if (myUserRecord) {
+          if (currentUser.collegeName !== myUserRecord.collegeName) {
+            currentUser.collegeName = myUserRecord.collegeName || '';
+            needsUpdate = true;
+          }
+          if (currentUser.department !== myUserRecord.department) {
+            currentUser.department = myUserRecord.department || 'Computer Science & Engineering';
+            needsUpdate = true;
+          }
+        }
+        if (needsUpdate) {
           localStorage.setItem('currentUser', JSON.stringify(currentUser));
         }
 
@@ -302,6 +502,77 @@ const TeamLeaderDashboard = () => {
         } else {
           setProjects([]);
         }
+
+        let liveNotifs = [];
+        try {
+          liveNotifs = await api.listNotifications() || [];
+          localStorage.setItem('notifications', JSON.stringify(liveNotifs));
+        } catch (apiErr) {
+          console.warn('Failed to fetch notifications from backend inside team leader dashboard:', apiErr);
+          const storedNotifs = localStorage.getItem('notifications');
+          liveNotifs = storedNotifs ? JSON.parse(storedNotifs) : [];
+        }
+
+        if (currentUser.email) {
+          const email = currentUser.email.toLowerCase();
+          setNotifications(liveNotifs.filter(n => {
+            const isTargetEmail = n.targetEmail && n.targetEmail.toLowerCase() === email;
+            const isTargetTeam = !n.targetEmail && n.targetTeam && fetchedTeamName && fetchedTeamName.split(',').map(t => t.trim().toLowerCase()).includes(n.targetTeam.toLowerCase().trim());
+            const isGeneral = !n.targetEmail && !n.targetTeam;
+            
+            if (!(isTargetEmail || isTargetTeam || isGeneral)) return false;
+
+            const title = (n.title || '').toLowerCase();
+            const message = (n.message || '').toLowerCase();
+            
+            // Student notifications
+            const isStudentRule = (
+              title.includes('added') ||
+              message.includes('added as a team member') ||
+              title.includes('task assigned') ||
+              message.includes('assigned a task') ||
+              title.includes('milestone declared') ||
+              message.includes('milestone') ||
+              title.includes('approved') ||
+              title.includes('rejected') ||
+              title.includes('reassigned') ||
+              message.includes('approved') ||
+              message.includes('rejected') ||
+              title.includes('comment') ||
+              message.includes('comment') ||
+              title.includes('removed') ||
+              message.includes('removed from') ||
+              title.includes('profile updated') ||
+              title.includes('credentials changed') ||
+              message.includes('profile changed') ||
+              message.includes('data has been updated') ||
+              title.includes('mentor assigned') ||
+              message.includes('mentor has been assigned') ||
+              message.includes('academic mentor')
+            );
+            if (isStudentRule) return true;
+
+            // Extra Team Leader notifications
+            const isExtraLeaderRule = (
+              title.includes('task uploaded') ||
+              title.includes('report uploaded') ||
+              title.includes('new report') ||
+              message.includes('uploaded a report') ||
+              title.includes('reminder') ||
+              title.includes('near') ||
+              message.includes('due date') ||
+              message.includes('deadline') ||
+              message.includes('days left') ||
+              message.includes('prior')
+            );
+            return isExtraLeaderRule;
+          }));
+        }
+
+        // Trigger background deadline reminders check
+        if (fetchedProj) {
+          checkDeadlineReminders(fetchedProj);
+        }
       } catch (err) {
         console.error(err);
       }
@@ -318,11 +589,59 @@ const TeamLeaderDashboard = () => {
         if (e.key === 'notifications' && e.newValue) {
           const parsed = JSON.parse(e.newValue);
           if (currentUser.email) {
-            setNotifications(parsed.filter(n => 
-              !n.targetEmail || 
-              n.targetEmail.toLowerCase() === currentUser.email.toLowerCase() ||
-              (n.targetTeam && myTeamName && n.targetTeam.toLowerCase() === myTeamName.toLowerCase())
-            ));
+            const email = currentUser.email.toLowerCase();
+            setNotifications(parsed.filter(n => {
+              const isTargetEmail = n.targetEmail && n.targetEmail.toLowerCase() === email;
+              const isTargetTeam = !n.targetEmail && n.targetTeam && myTeamName && myTeamName.split(',').map(t => t.trim().toLowerCase()).includes(n.targetTeam.toLowerCase().trim());
+              const isGeneral = !n.targetEmail && !n.targetTeam;
+              
+              if (!(isTargetEmail || isTargetTeam || isGeneral)) return false;
+
+              const title = (n.title || '').toLowerCase();
+              const message = (n.message || '').toLowerCase();
+              
+              // Student notifications
+              const isStudentRule = (
+                title.includes('added') ||
+                message.includes('added as a team member') ||
+                title.includes('task assigned') ||
+                message.includes('assigned a task') ||
+                title.includes('milestone declared') ||
+                message.includes('milestone') ||
+                title.includes('approved') ||
+                title.includes('rejected') ||
+                title.includes('reassigned') ||
+                message.includes('approved') ||
+                message.includes('rejected') ||
+                title.includes('comment') ||
+                message.includes('comment') ||
+                title.includes('removed') ||
+                message.includes('removed from') ||
+                title.includes('profile updated') ||
+                title.includes('credentials changed') ||
+                message.includes('profile changed') ||
+                message.includes('data has been updated') ||
+                title.includes('mentor assigned') ||
+                message.includes('mentor has been assigned') ||
+                message.includes('academic mentor')
+              );
+              if (isStudentRule) return true;
+
+              // Extra Team Leader notifications
+              const isExtraLeaderRule = (
+                title.includes('task uploaded') ||
+                title.includes('report uploaded') ||
+                title.includes('new report') ||
+                message.includes('uploaded a report') ||
+                title.includes('reminder') ||
+                title.includes('near') ||
+                message.includes('due date') ||
+                message.includes('deadline') ||
+                message.includes('days left') ||
+                message.includes('prior')
+              );
+              return isExtraLeaderRule;
+            }));
           }
         }
 
@@ -394,11 +713,61 @@ const TeamLeaderDashboard = () => {
       .filter((t) => t.reportSubmitted && t.reportDetails)
       .map((t) => t.reportDetails);
 
+    let overallCommits = 0;
+    let overallPRs = 0;
+    updatedTasks.forEach(t => {
+      if (t.reportDetails) {
+        overallCommits += parseInt(t.reportDetails.commitsCount || 0, 10);
+        overallPRs += parseInt(t.reportDetails.prsCount || 0, 10);
+      }
+    });
+
     const nextP = { 
       ...proj, 
       tasks: updatedTasks,
+      commits: overallCommits,
+      prs: overallPRs,
+      github: {
+        ...(proj.github || {}),
+        commits: overallCommits,
+        prs: overallPRs
+      },
       weeklyReports: [...cleanReports, ...activeTaskReports]
     };
+
+    // Calculate individual member commits/PRs for all students in the task list
+    const uniqueStudents = [...new Set(updatedTasks.map(t => t.student).filter(Boolean))];
+    const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+    for (const studentName of uniqueStudents) {
+      const studentUser = registeredUsers.find(u => 
+        u.fullName?.toLowerCase().trim() === studentName.toLowerCase().trim() || 
+        u.name?.toLowerCase().trim() === studentName.toLowerCase().trim()
+      );
+      const studentEmail = studentUser ? studentUser.email : '';
+      
+      let memberCommits = 0;
+      let memberPRs = 0;
+      updatedTasks.forEach(t => {
+        if (t.student && t.student.toLowerCase() === studentName.toLowerCase()) {
+          if (t.reportDetails) {
+            memberCommits += parseInt(t.reportDetails.commitsCount || 0, 10);
+            memberPRs += parseInt(t.reportDetails.prsCount || 0, 10);
+          }
+        }
+      });
+
+      try {
+        await api.saveOrUpdateMemberMetric({
+          memberName: studentName,
+          memberEmail: studentEmail,
+          teamName: proj.teamName,
+          commitsCount: memberCommits,
+          prsCount: memberPRs
+        });
+      } catch (metricErr) {
+        console.warn('Failed to save individual member metrics for ' + studentName, metricErr);
+      }
+    }
 
     try {
       const updated = await api.updateProject(pId, nextP);
@@ -447,6 +816,19 @@ const TeamLeaderDashboard = () => {
         status: 'Good',
         rank: 1
       });
+
+      // Send team creation notification to admin
+      try {
+        await addNotification(
+          'New Team Created',
+          `A new team "${created.teamName}" has been created for project "${created.name}".`,
+          'admin@pp.edu',
+          null,
+          'success'
+        );
+      } catch (notifErr) {
+        console.warn('Failed to send admin team creation notification:', notifErr);
+      }
     } catch (err) {
       console.error('Failed to create project/team on backend:', err);
     }
@@ -517,6 +899,18 @@ const TeamLeaderDashboard = () => {
             setActiveTab('projects');
           }
 
+          // Clean up project in localStorage
+          try {
+            const stored = localStorage.getItem('projects');
+            if (stored) {
+              const allProj = JSON.parse(stored);
+              const remainingProj = allProj.filter(p => p.id !== projId);
+              localStorage.setItem('projects', JSON.stringify(remainingProj));
+            }
+          } catch (storageErr) {
+            console.warn('Failed to clean up localStorage projects on delete:', storageErr);
+          }
+
           // 2. Delete team from teams collection in database
           try {
             const fetchedTeams = await api.listTeams();
@@ -549,9 +943,8 @@ const TeamLeaderDashboard = () => {
                 email: matchedUser.email,
                 role: matchedUser.role === 'Team Leader' ? 'TEAM_LEADER' : matchedUser.role === 'Mentor' ? 'MENTOR' : 'STUDENT',
                 department: matchedUser.department || 'Computer Science & Engineering',
-                salary: matchedUser.salary || 50000.0,
-                joinDate: matchedUser.joinDate || new Date().toISOString().split('T')[0],
-                team: 'Not Assigned'
+                team: 'Not Assigned',
+                collegeName: matchedUser.collegeName || ''
               });
             }
           } catch (userErr) {
@@ -571,13 +964,13 @@ const TeamLeaderDashboard = () => {
 
     const newReport = {
       id: `rep-${Date.now()}`,
-      week: reportData.weekNumber || 'Week 1',
+      week: reportData.week || reportData.weekNumber || 'Week 1',
       remarks: reportData.remarks || 'No remarks provided.',
       submissionStatus: 'Submitted',
       submittedDate: new Date().toISOString().split('T')[0],
       fileName: reportData.fileName,
       fileSize: reportData.fileSize,
-      fileUrl: '#'
+      fileUrl: reportData.fileUrl || '#'
     };
 
     const nextP = {
@@ -587,6 +980,33 @@ const TeamLeaderDashboard = () => {
 
     try {
       const updated = await api.updateProject(projectId, nextP);
+
+      // Send weekly report uploaded notification to mentor
+      try {
+        const mentorName = proj.mentor;
+        if (mentorName && mentorName !== 'Not Assigned') {
+          const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+          const mentorUser = registeredUsers.find(u => 
+            (u.role === 'Mentor' || u.role === 'MENTOR') && 
+            (u.fullName?.trim().toLowerCase() === mentorName.trim().toLowerCase() || u.name?.trim().toLowerCase() === mentorName.trim().toLowerCase())
+          );
+          const mentorEmail = mentorUser ? mentorUser.email : null;
+          if (mentorEmail) {
+            const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+            const leaderName = currentUser.fullName || currentUser.name || 'Team Leader';
+            await addNotification(
+              'New Report Uploaded',
+              `Team leader "${leaderName}" uploaded a weekly report for "${reportData.weekNumber || 'Week'}" under project "${proj.name}".`,
+              mentorEmail,
+              proj.teamName,
+              'info'
+            );
+          }
+        }
+      } catch (notifErr) {
+        console.warn('Failed to send weekly report notification to mentor:', notifErr);
+      }
+
       setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
       if (selectedProject && selectedProject.id === updated.id) {
         setSelectedProject(updated);
@@ -644,9 +1064,8 @@ const TeamLeaderDashboard = () => {
                         email: myUserRecord.email,
                         role: 'TEAM_LEADER',
                         department: myUserRecord.department || 'Computer Science & Engineering',
-                        salary: myUserRecord.salary || 50000.0,
-                        joinDate: myUserRecord.joinDate || new Date().toISOString().split('T')[0],
-                        team: selectedTeam
+                        team: selectedTeam,
+                        collegeName: myUserRecord.collegeName || ''
                       });
                     }
 
@@ -754,14 +1173,7 @@ const TeamLeaderDashboard = () => {
           </div>
         )}
 
-        {/* AI TEAM INSIGHTS */}
-        {projects.length > 0 && (
-          <AIInsights 
-            teamName={myTeamName} 
-            tasks={myProject?.tasks || []} 
-            members={activeMembers}
-          />
-        )}
+
 
       </div>
     );
@@ -782,14 +1194,14 @@ const TeamLeaderDashboard = () => {
       case 'project-details':
         return (
           <ProjectDetails 
-            project={selectedProject} 
+            project={resolvedSelectedProject} 
             onBack={() => setActiveTab('projects')} 
             onNavigateToSubmitReport={(task) => {
               setSubmittingTask(task);
               setActiveTab('submit-report');
             }}
             onNavigateToEditReport={(task) => {
-              const freshTask = selectedProject?.tasks?.find(t => t.id === task.id) || task;
+              const freshTask = resolvedSelectedProject?.tasks?.find(t => t.id === task.id) || task;
               setSubmittingTask(freshTask);
               setActiveTab('edit-report');
             }}
@@ -807,9 +1219,12 @@ const TeamLeaderDashboard = () => {
                 taskName: submittingTask.name,
                 title: reportData.title,
                 description: reportData.description,
+                commitsCount: reportData.commitsCount,
+                prsCount: reportData.prsCount,
                 fileName: reportData.fileName,
                 fileSize: reportData.fileSize,
-                fileUrl: reportData.fileUrl
+                fileUrl: reportData.fileUrl,
+                fileId: reportData.fileId
               });
             }}
           />
@@ -822,8 +1237,12 @@ const TeamLeaderDashboard = () => {
             initialData={{
               title: submittingTask?.reportDetails?.week || '',
               description: submittingTask?.reportDetails?.remarks || '',
+              commitsCount: submittingTask?.reportDetails?.commitsCount || 0,
+              prsCount: submittingTask?.reportDetails?.prsCount || 0,
               fileName: submittingTask?.reportDetails?.fileName || '',
-              fileSize: submittingTask?.reportDetails?.fileSize || ''
+              fileSize: submittingTask?.reportDetails?.fileSize || '',
+              fileUrl: submittingTask?.reportDetails?.fileUrl || '#',
+              fileId: submittingTask?.reportDetails?.fileId || null
             }}
             onBack={() => setActiveTab('project-details')}
             onSubmit={(reportData) => {
@@ -831,9 +1250,12 @@ const TeamLeaderDashboard = () => {
                 taskName: submittingTask.name,
                 title: reportData.title,
                 description: reportData.description,
+                commitsCount: reportData.commitsCount,
+                prsCount: reportData.prsCount,
                 fileName: reportData.fileName,
                 fileSize: reportData.fileSize,
-                fileUrl: reportData.fileUrl
+                fileUrl: reportData.fileUrl,
+                fileId: reportData.fileId
               });
             }}
           />
@@ -848,21 +1270,20 @@ const TeamLeaderDashboard = () => {
         return (
           <WeeklyReports 
             project={myProject} 
+            projects={projects}
             teamName={myTeamName} 
             onSubmitReport={handleSubmitWeeklyReport} 
           />
         );
       case 'performance':
-        return <Performance project={myProject} teamName={myTeamName} />;
-      case 'chat-guru':
-        return <ChatGuru />;
+        return <Performance project={myProject} teamName={myProject?.teamName || myTeamName} projects={projects} />;
       case 'settings':
         return <Settings />;
       case 'notifications':
         return (
           <NotificationsPage 
             notifications={notifications} 
-            onClearAll={() => setNotifications([])} 
+            onClearAll={handleClearAllNotifications} 
             onBack={() => setActiveTab('dashboard')} 
           />
         );
@@ -935,7 +1356,6 @@ const TeamLeaderDashboard = () => {
                     { id: 'milestones', label: 'Milestones' },
                     { id: 'reports', label: 'Weekly Reports' },
                     { id: 'performance', label: 'Performance' },
-                    { id: 'chat-guru', label: 'Chat Guru' },
                     { id: 'settings', label: 'Settings' },
                     { id: 'profile', label: 'Profile' },
                   ].map((tab) => (

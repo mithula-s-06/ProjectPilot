@@ -1,7 +1,6 @@
 import React from 'react';
-import { FiTrendingUp, FiActivity } from 'react-icons/fi';
 
-const PerformanceTable = ({ members = [] }) => {
+const PerformanceTable = ({ members = [], projectName = '' }) => {
   
   const getInitials = (name) => {
     return name
@@ -38,11 +37,11 @@ const PerformanceTable = ({ members = [] }) => {
           <thead>
             <tr className="border-b border-brand-border bg-slate-200/20 dark:bg-slate-800/10">
               <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-left">Student</th>
+              <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-left">Project</th>
               <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-left w-48">GitHub Commits</th>
               <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-center">PRs</th>
               <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-center">Completed Tasks</th>
               <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-center">Pending Tasks</th>
-              <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-center">Report Rate</th>
               <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-center">Score</th>
               <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-right">Status</th>
             </tr>
@@ -65,6 +64,20 @@ const PerformanceTable = ({ members = [] }) => {
                         <span className="text-[9px] text-brand-text-muted font-semibold">{m.role}</span>
                       </div>
                     </div>
+                  </td>
+                  {/* Project */}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {m.projectNames && m.projectNames.length > 1 ? (
+                      <select className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-brand-border rounded-lg text-xs font-semibold text-brand-text focus:ring-1 focus:ring-primary focus:outline-none cursor-pointer">
+                        {m.projectNames.map((proj, pIdx) => (
+                          <option key={pIdx} value={proj}>{proj}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-xs font-bold text-brand-text">
+                        {(m.projectNames && m.projectNames[0]) || projectName || 'AI safety analysis'}
+                      </span>
+                    )}
                   </td>
                   {/* GitHub Commits Bar */}
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -91,10 +104,6 @@ const PerformanceTable = ({ members = [] }) => {
                   {/* Pending Tasks */}
                   <td className="px-6 py-4 text-center whitespace-nowrap font-semibold text-xs text-brand-text-muted">
                     {m.pendingTasks}
-                  </td>
-                  {/* Report Compliance */}
-                  <td className="px-6 py-4 text-center whitespace-nowrap font-semibold text-xs text-brand-text">
-                    {m.reportRate}%
                   </td>
                   {/* Performance Score */}
                   <td className="px-6 py-4 text-center whitespace-nowrap font-extrabold text-xs text-brand-text">

@@ -1,7 +1,5 @@
 package com.project.entity;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -17,13 +15,11 @@ public class User {
 
     private String department;
 
-    private BigDecimal salary;
-
-    private LocalDate joinDate;
-
     private String role;
 
     private String team;
+
+    private String collegeName;
 
     public User() {
     }
@@ -36,12 +32,10 @@ public class User {
     public void setEmail(String email) { this.email = email; }
     public String getDepartment() { return department; }
     public void setDepartment(String department) { this.department = department; }
-    public BigDecimal getSalary() { return salary; }
-    public void setSalary(BigDecimal salary) { this.salary = salary; }
-    public LocalDate getJoinDate() { return joinDate; }
-    public void setJoinDate(LocalDate joinDate) { this.joinDate = joinDate; }
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
     public String getTeam() { return team; }
     public void setTeam(String team) { this.team = team; }
+    public String getCollegeName() { return collegeName; }
+    public void setCollegeName(String collegeName) { this.collegeName = collegeName; }
 }

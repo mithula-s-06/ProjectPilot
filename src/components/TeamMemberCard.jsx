@@ -57,11 +57,7 @@ const TeamMemberCard = ({ member, onEdit, onDelete }) => {
           </span>
         </div>
 
-        {/* Contribution share */}
-        <div className="flex items-center justify-between text-xs font-semibold text-brand-text-muted pt-1">
-          <span>Work Contribution Share</span>
-          <span className="text-secondary font-bold">{member.contribution || 0}%</span>
-        </div>
+
 
         {/* Current Tasks list */}
         <div className="space-y-2 pt-2 border-t border-brand-border/40">

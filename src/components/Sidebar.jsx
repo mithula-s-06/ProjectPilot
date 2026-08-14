@@ -51,19 +51,19 @@ const Sidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLogout })
       }`}
     >
       {/* Top Menu list */}
-      <div className="space-y-2">
+      <div className="space-y-2 pt-1">
         {mainMenuItems.map(renderMenuItem)}
       </div>
 
       {/* Spacing & Bottom Menu list */}
-      <div className="space-y-6">
-        <div className="space-y-2">
+      <div className="space-y-4 pb-8 flex-shrink-0">
+        <div className="space-y-2 border-t border-brand-border/40 pt-4">
           {bottomMenuItems.map(renderMenuItem)}
           
           {/* Logout Button */}
           <button
             onClick={onLogout}
-            className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl text-sm font-semibold text-rose-500 hover:bg-rose-500/10 transition-all duration-300 group"
+            className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl text-sm font-semibold text-rose-500 hover:bg-rose-500/10 transition-all duration-300 group cursor-pointer"
           >
             <div className="transition-transform duration-300 group-hover:translate-x-0.5">
               <FiLogOut className="w-5 h-5" />
@@ -73,17 +73,6 @@ const Sidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLogout })
                 Logout
               </span>
             )}
-          </button>
-        </div>
-
-        {/* Divider & Collapse toggle button at the bottom */}
-        <div className="border-t border-brand-border pt-4 flex justify-end">
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="p-1.5 rounded-lg border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors duration-300 focus:outline-none"
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? <FiChevronRight className="w-4 h-4" /> : <FiChevronLeft className="w-4 h-4" />}
           </button>
         </div>
       </div>

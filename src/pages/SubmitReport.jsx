@@ -1,21 +1,61 @@
 import React, { useState, useEffect } from 'react';
 import { FiArrowLeft, FiFileText, FiClock, FiAlertCircle, FiCheck, FiUploadCloud, FiTrash2 } from 'react-icons/fi';
+import { api } from '../utils/api';
+import { fileStorage } from '../utils/fileStorage';
 
 const SubmitReport = ({ task, onBack, onSubmit, isEdit = false, initialData = null }) => {
   const [description, setDescription] = useState(() => isEdit && initialData ? initialData.description : '');
   const [title, setTitle] = useState(() => isEdit && initialData ? initialData.title : '');
-  const [selectedFile, setSelectedFile] = useState(() => isEdit && initialData && initialData.fileName ? { name: initialData.fileName, size: initialData.fileSize ? parseFloat(initialData.fileSize) * 1024 * 1024 : 0, isExisting: true } : null);
+  const [commitsCount, setCommitsCount] = useState(() => isEdit && initialData ? String(initialData.commitsCount || 0) : '');
+  const [prsCount, setPrsCount] = useState(() => isEdit && initialData ? String(initialData.prsCount || 0) : '');
+  const [selectedFiles, setSelectedFiles] = useState(() => {
+    if (isEdit && initialData) {
+      if (initialData.files && Array.isArray(initialData.files)) {
+        return initialData.files.map(f => ({ ...f, isExisting: true, name: f.fileName, size: f.fileSize ? parseFloat(f.fileSize) * 1024 * 1024 : 0 }));
+      } else if (initialData.fileName) {
+        return [{
+          name: initialData.fileName,
+          size: initialData.fileSize ? parseFloat(initialData.fileSize) * 1024 * 1024 : 0,
+          isExisting: true,
+          fileName: initialData.fileName,
+          fileSize: initialData.fileSize,
+          fileUrl: initialData.fileUrl,
+          fileId: initialData.fileId
+        }];
+      }
+    }
+    return [];
+  });
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (isEdit && initialData) {
       setTitle(initialData.title || '');
       setDescription(initialData.description || '');
-      setSelectedFile(initialData.fileName ? { name: initialData.fileName, size: initialData.fileSize ? parseFloat(initialData.fileSize) * 1024 * 1024 : 0, isExisting: true } : null);
+      setCommitsCount(initialData.commitsCount !== undefined ? String(initialData.commitsCount) : '');
+      setPrsCount(initialData.prsCount !== undefined ? String(initialData.prsCount) : '');
+      if (initialData.files && Array.isArray(initialData.files)) {
+        setSelectedFiles(initialData.files.map(f => ({ ...f, isExisting: true, name: f.fileName, size: f.fileSize ? parseFloat(f.fileSize) * 1024 * 1024 : 0 })));
+      } else if (initialData.fileName) {
+        setSelectedFiles([{
+          name: initialData.fileName,
+          size: initialData.fileSize ? parseFloat(initialData.fileSize) * 1024 * 1024 : 0,
+          isExisting: true,
+          fileName: initialData.fileName,
+          fileSize: initialData.fileSize,
+          fileUrl: initialData.fileUrl,
+          fileId: initialData.fileId
+        }]);
+      } else {
+        setSelectedFiles([]);
+      }
     } else if (!isEdit) {
       setTitle('');
       setDescription('');
-      setSelectedFile(null);
+      setCommitsCount('');
+      setPrsCount('');
+      setSelectedFiles([]);
     }
   }, [isEdit, initialData]);
 
@@ -34,9 +74,9 @@ const SubmitReport = ({ task, onBack, onSubmit, isEdit = false, initialData = nu
   };
 
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setSelectedFile(file);
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+      setSelectedFiles(prev => [...prev, ...files]);
       if (error) setError('');
     }
   };
@@ -47,18 +87,18 @@ const SubmitReport = ({ task, onBack, onSubmit, isEdit = false, initialData = nu
 
   const handleDrop = (e) => {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      setSelectedFile(file);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      setSelectedFiles(prev => [...prev, ...files]);
       if (error) setError('');
     }
   };
 
-  const handleRemoveFile = () => {
-    setSelectedFile(null);
+  const handleRemoveFile = (indexToRemove) => {
+    setSelectedFiles(prev => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim()) {
       setError('Please enter a report subject / title.');
@@ -68,18 +108,61 @@ const SubmitReport = ({ task, onBack, onSubmit, isEdit = false, initialData = nu
       setError('Please enter a description of what the report means.');
       return;
     }
-    if (!selectedFile) {
-      setError('Please upload a report document to proceed with submission.');
+    if (selectedFiles.length === 0) {
+      setError('Please upload at least one report document.');
       return;
     }
     setError('');
-    onSubmit({
-      title: title.trim(),
-      description: description,
-      fileName: selectedFile.name,
-      fileSize: selectedFile.size && !selectedFile.isExisting ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : (initialData?.fileSize || '1.12 MB'),
-      fileUrl: '#'
-    });
+
+    try {
+      setUploading(true);
+
+      const uploadedFiles = await Promise.all(selectedFiles.map(async (file) => {
+        if (file instanceof File) {
+          const fileId = `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          // 1. Save to local IndexedDB first
+          await fileStorage.saveFile(fileId, file);
+
+          // 2. Try to upload to backend
+          try {
+            const uploadResult = await api.uploadFile(file);
+            await fileStorage.saveFile(uploadResult.id, file);
+            return {
+              fileName: file.name,
+              fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+              fileUrl: uploadResult.fileUrl,
+              fileId: uploadResult.id
+            };
+          } catch (uploadErr) {
+            console.warn('Backend upload failed, relying on IndexedDB:', uploadErr);
+            return {
+              fileName: file.name,
+              fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+              fileUrl: `local-file:${fileId}`,
+              fileId: fileId
+            };
+          }
+        }
+        return file;
+      }));
+
+      onSubmit({
+        title: title.trim(),
+        description: description,
+        commitsCount: parseInt(commitsCount) || 0,
+        prsCount: parseInt(prsCount) || 0,
+        fileName: uploadedFiles[0]?.fileName || '',
+        fileSize: uploadedFiles[0]?.fileSize || '',
+        fileUrl: uploadedFiles[0]?.fileUrl || '#',
+        fileId: uploadedFiles[0]?.fileId || null,
+        files: uploadedFiles
+      });
+    } catch (err) {
+      console.error('File saving/uploading failed:', err);
+      setError('Failed to save the file. Please try again.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -180,14 +263,48 @@ const SubmitReport = ({ task, onBack, onSubmit, isEdit = false, initialData = nu
             />
           </div>
 
+          {/* GitHub Metrics for the Task */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Commits Count */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-brand-text-muted uppercase tracking-wider block">
+                No. of GitHub Commits for this task
+              </label>
+              <input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={commitsCount}
+                onChange={(e) => setCommitsCount(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text placeholder-brand-text-muted/40 focus:outline-none focus:border-primary/50 transition-all duration-300 text-sm"
+              />
+            </div>
+
+            {/* PRs Count */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-brand-text-muted uppercase tracking-wider block">
+                No. of PRs opened for this task
+              </label>
+              <input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={prsCount}
+                onChange={(e) => setPrsCount(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text placeholder-brand-text-muted/40 focus:outline-none focus:border-primary/50 transition-all duration-300 text-sm"
+              />
+            </div>
+          </div>
+
           {/* File Upload Area */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-brand-text-muted uppercase tracking-wider block">
-              Upload Report Document
+              Upload Report Documents
             </label>
             <div
               onDragOver={handleDragOver}
               onDrop={handleDrop}
+              onClick={() => document.getElementById('file-upload').click()}
               className="border-2 border-dashed border-brand-border hover:border-primary/50 bg-slate-50/20 dark:bg-slate-900/10 rounded-xl p-6 text-center transition-all duration-300 relative cursor-pointer"
             >
               <input
@@ -195,32 +312,45 @@ const SubmitReport = ({ task, onBack, onSubmit, isEdit = false, initialData = nu
                 id="file-upload"
                 onChange={handleFileChange}
                 className="hidden"
+                multiple
               />
-              <label htmlFor="file-upload" className="cursor-pointer space-y-2 block">
+              <div className="cursor-pointer space-y-2 block">
                 <FiUploadCloud className="w-8 h-8 mx-auto text-brand-text-muted/65" />
                 <div className="text-xs font-semibold text-brand-text">
-                  {selectedFile ? (
-                    <span className="text-primary font-bold">{selectedFile.name}</span>
-                  ) : (
-                    <span>Drag & drop a file here, or <span className="text-primary hover:underline">browse</span></span>
-                  )}
+                  <span>Drag & drop files here, or <span className="text-primary hover:underline">browse</span></span>
                 </div>
-                <p className="text-[10px] text-brand-text-muted/60">
-                  Supports any document format (PDF, DOCX, XLSX, ZIP, PNG, etc.) {selectedFile && `(${(selectedFile.size / 1024 / 1024).toFixed(2)} MB)`}
+                <p className="text-[10px] text-brand-text-muted">
+                  Supports PDF, Documents, Sheets, Images or ZIP (Max 50MB)
                 </p>
-              </label>
-              
-              {selectedFile && (
-                <button
-                  type="button"
-                  onClick={handleRemoveFile}
-                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-colors"
-                  title="Remove file"
-                >
-                  <FiTrash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
+              </div>
             </div>
+
+            {/* List of uploaded files */}
+            {selectedFiles.length > 0 && (
+              <div className="mt-3 space-y-2 max-h-[160px] overflow-y-auto custom-scrollbar">
+                {selectedFiles.map((file, index) => (
+                  <div key={index} className="flex items-center justify-between p-2.5 rounded-xl border border-brand-border bg-slate-50/20 dark:bg-slate-900/10 text-xs">
+                    <div className="flex items-center gap-2 truncate pr-2">
+                      <FiFileText className="w-4 h-4 text-cyan-500 shrink-0" />
+                      <span className="truncate text-brand-text font-medium" title={file.name}>
+                        {file.name}
+                      </span>
+                      <span className="text-[10px] text-brand-text-muted shrink-0">
+                        ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }}
+                      className="p-1 rounded bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-colors cursor-pointer"
+                      title="Remove file"
+                    >
+                      <FiTrash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Action buttons */}
@@ -228,16 +358,27 @@ const SubmitReport = ({ task, onBack, onSubmit, isEdit = false, initialData = nu
             <button
               type="button"
               onClick={onBack}
-              className="px-5 py-2.5 rounded-xl border border-brand-border text-xs font-bold text-brand-text-muted hover:text-brand-text hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
+              disabled={uploading}
+              className="px-5 py-2.5 rounded-xl border border-brand-border text-xs font-bold text-brand-text-muted hover:text-brand-text hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-xs font-bold uppercase tracking-wider hover:shadow-glow-primary hover-lift transition-all duration-300 inline-flex items-center gap-1.5 cursor-pointer"
+              disabled={uploading}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white text-xs font-bold uppercase tracking-wider hover:shadow-glow-primary hover-lift transition-all duration-300 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
-              <FiCheck className="w-4 h-4" />
-              <span>{isEdit ? 'Update Report' : 'Submit Report'}</span>
+              {uploading ? (
+                <>
+                  <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  <span>Uploading File...</span>
+                </>
+              ) : (
+                <>
+                  <FiCheck className="w-4 h-4" />
+                  <span>{isEdit ? 'Update Report' : 'Submit Report'}</span>
+                </>
+              )}
             </button>
           </div>
 

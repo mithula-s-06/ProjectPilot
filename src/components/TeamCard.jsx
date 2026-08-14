@@ -9,22 +9,20 @@ const TeamCard = ({ team, onViewTeam }) => {
     return 'bg-rose-500/10 text-rose-500 border-rose-500/20';
   };
 
-  const getRiskBadgeClass = (risk) => {
-    const r = risk.toLowerCase();
-    if (r.includes('low')) return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
-    if (r.includes('med')) return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
-    return 'bg-rose-500/10 text-rose-500 border-rose-500/20';
+
+
+  const getStatusFromHealth = (health) => {
+    const score = health !== undefined ? health : 100;
+    if (score >= 80) return 'VERY GOOD';
+    if (score >= 50) return 'MEDIUM';
+    return 'POOR';
   };
 
-  const getStatusBadgeClass = (status) => {
-    const s = status.toLowerCase();
-    if (s.includes('track') || s.includes('excel') || s.includes('good')) {
-      return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
-    }
-    if (s.includes('warn') || s.includes('poor') || s.includes('risk')) {
-      return 'bg-rose-500/10 text-rose-500 border-rose-500/20';
-    }
-    return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+  const getStatusBadgeClass = (health) => {
+    const score = health !== undefined ? health : 100;
+    if (score >= 80) return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
+    if (score >= 50) return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
+    return 'bg-rose-500/10 text-rose-500 border-rose-500/20';
   };
 
   return (
@@ -48,8 +46,8 @@ const TeamCard = ({ team, onViewTeam }) => {
               {team.project || team.projectName}
             </p>
           </div>
-          <span className={`px-2.5 py-0.5 rounded text-[9px] font-extrabold tracking-wide uppercase border select-none h-fit ${getStatusBadgeClass(team.status)}`}>
-            {team.status}
+          <span className={`px-2.5 py-0.5 rounded text-[9px] font-extrabold tracking-wide uppercase border select-none h-fit ${getStatusBadgeClass(team.health)}`}>
+            {getStatusFromHealth(team.health)}
           </span>
         </div>
 
@@ -59,36 +57,16 @@ const TeamCard = ({ team, onViewTeam }) => {
           <span>Leader: <strong className="text-brand-text">{team.leaderName || 'Ankit Sharma'}</strong></span>
         </div>
 
-        {/* Health / Risk row */}
-        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-brand-border/40">
-          <div>
-            <span className="text-[9px] font-bold text-brand-text-muted uppercase block mb-1">Health</span>
-            <span className={`inline-flex items-center gap-0.5 px-2 py-0.2 rounded-full border text-[10px] font-extrabold ${getHealthBadgeClass(team.health)}`}>
-              <FiActivity className="w-3 h-3 animate-pulse" />
-              {team.health}%
-            </span>
-          </div>
-          <div>
-            <span className="text-[9px] font-bold text-brand-text-muted uppercase block mb-1">Risk Level</span>
-            <span className={`inline-block px-2 py-0.2 rounded border text-[10px] font-bold uppercase ${getRiskBadgeClass(team.riskLevel || 'Low')}`}>
-              {team.riskLevel || 'Low'}
-            </span>
-          </div>
+        {/* Health row */}
+        <div className="pt-2 border-t border-brand-border/40">
+          <span className="text-[9px] font-bold text-brand-text-muted uppercase block mb-1">Health</span>
+          <span className={`inline-flex items-center gap-0.5 px-2 py-0.2 rounded-full border text-[10px] font-extrabold ${getHealthBadgeClass(team.health)}`}>
+            <FiActivity className="w-3 h-3 animate-pulse" />
+            {team.health}%
+          </span>
         </div>
 
-        {/* Progress Bar slider */}
-        <div className="space-y-1.5 pt-1.5">
-          <div className="flex items-center justify-between text-xs font-semibold text-brand-text-muted">
-            <span>Development Progress</span>
-            <span className="text-brand-text">{team.progress || 60}%</span>
-          </div>
-          <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full transition-all duration-500" 
-              style={{ width: `${team.progress || 60}%` }}
-            />
-          </div>
-        </div>
+
 
       </div>
 

@@ -15,6 +15,12 @@ public class WeeklyReport {
     private String fileName;
     private String fileSize;
     private String feedback;
+    private Double similarityScore = 0.0;
+    private Double aiGeneratedScore = 0.0;
+    private String matchedReportId = "";
+    private Boolean isFlagged = false;
+    private Integer commitsCount = 0;
+    private Integer prsCount = 0;
 
     public WeeklyReport() {}
 
@@ -69,4 +75,22 @@ public class WeeklyReport {
 
     public String getFeedback() { return feedback; }
     public void setFeedback(String feedback) { this.feedback = feedback; }
+
+    public Double getSimilarityScore() { return similarityScore; }
+    public void setSimilarityScore(Double similarityScore) { this.similarityScore = similarityScore; }
+
+    public Double getAiGeneratedScore() { return aiGeneratedScore; }
+    public void setAiGeneratedScore(Double aiGeneratedScore) { this.aiGeneratedScore = aiGeneratedScore; }
+
+    public String getMatchedReportId() { return matchedReportId; }
+    public void setMatchedReportId(String matchedReportId) { this.matchedReportId = matchedReportId; }
+
+    public Boolean getIsFlagged() { return isFlagged; }
+    public void setIsFlagged(Boolean flagged) { isFlagged = flagged; }
+
+    public Integer getCommitsCount() { return commitsCount; }
+    public void setCommitsCount(Integer commitsCount) { this.commitsCount = commitsCount; }
+
+    public Integer getPrsCount() { return prsCount; }
+    public void setPrsCount(Integer prsCount) { this.prsCount = prsCount; }
 }

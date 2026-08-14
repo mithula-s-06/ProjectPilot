@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { FiX, FiArrowRight } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
-import { api } from '../utils/api';
+import { api, seedHistoricalNotifications, addNotification } from '../utils/api';
+import { checkDeadlineReminders } from '../utils/reminders';
 import MentorNavbar from '../components/MentorNavbar';
 import MentorSidebar from '../components/MentorSidebar';
 import OverviewCards from '../components/OverviewCards';
@@ -12,12 +13,10 @@ import ActiveTeams from './ActiveTeams';
 import TeamDetails from './TeamDetails';
 import Reports from './Reports';
 import ReportReview from './ReportReview';
-import RiskTeams from './RiskTeams';
-import RiskTeamDetails from './RiskTeamDetails';
+import Suggestions from './Suggestions';
 import Settings from './Settings';
 import Profile from './Profile';
 import NotificationsPage from './NotificationsPage';
-import ChatGuru from './ChatGuru';
 
 // Mock datasets
 // Clear mock data imports
@@ -37,16 +36,27 @@ const MentorDashboard = () => {
       
       const storedProj = localStorage.getItem('projects');
       const storedUsers = localStorage.getItem('registeredUsers');
+      const storedTeams = localStorage.getItem('teams');
       
       const registeredUsers = storedUsers ? JSON.parse(storedUsers) : [];
       const projects = storedProj ? JSON.parse(storedProj) : [];
+      const databaseTeams = storedTeams ? JSON.parse(storedTeams) : [];
 
       const mentorProjects = projects.filter(p => p.mentor && p.mentor.toLowerCase() === loggedInMentorName.toLowerCase());
 
       return mentorProjects.map((p, idx) => {
-        const members = registeredUsers.filter(u => u.team && u.team.toLowerCase() === p.teamName?.toLowerCase());
-        const leader = registeredUsers.find(u => u.team && u.team.toLowerCase() === p.teamName?.toLowerCase() && u.role === 'Team Leader');
+        const isUserInTeam = (user, tName) => {
+          if (!user || !user.team || !tName) return false;
+          return user.team.split(',').map(t => t.trim().toLowerCase()).includes(tName.toLowerCase());
+        };
+        const members = registeredUsers.filter(u => isUserInTeam(u, p.teamName));
+        const leader = registeredUsers.find(u => isUserInTeam(u, p.teamName) && u.role === 'Team Leader');
         
+        const matchedDbTeam = databaseTeams.find(dt => dt.name && p.teamName && dt.name.toLowerCase() === p.teamName.toLowerCase());
+        const resolvedLeader = matchedDbTeam && matchedDbTeam.leaderName && matchedDbTeam.leaderName !== 'Not Assigned'
+          ? matchedDbTeam.leaderName
+          : (leader ? (leader.fullName || leader.name) : 'Not Assigned');
+
         return {
           id: p.id || `team-${idx}`,
           rank: idx + 1,
@@ -56,7 +66,7 @@ const MentorDashboard = () => {
           mentor: p.mentor,
           status: p.health >= 95 ? 'Excellent' : p.health >= 80 ? 'Very Good' : p.health >= 60 ? 'Good' : 'Poor',
           membersCount: members.length,
-          leaderName: leader ? (leader.fullName || leader.name) : 'Not Assigned',
+          leaderName: resolvedLeader,
           progress: p.progress || 0,
           domain: p.domain || 'General'
         };
@@ -69,8 +79,51 @@ const MentorDashboard = () => {
 
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
-  const [selectedRiskTeam, setSelectedRiskTeam] = useState(null);
-  const [notifications, setNotifications] = useState([]);
+  const [notifications, setNotifications] = useState(() => {
+    try {
+      seedHistoricalNotifications();
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      const stored = localStorage.getItem('notifications');
+      if (stored && currentUser.email) {
+        const parsed = JSON.parse(stored);
+        
+        // Find assigned teams for the logged-in mentor
+        const allProjects = JSON.parse(localStorage.getItem('projects') || '[]');
+        const loggedInMentorName = (currentUser.fullName || currentUser.name || '').toLowerCase().trim();
+        const myTeams = allProjects
+          .filter(p => p.mentor && p.mentor.toLowerCase().trim() === loggedInMentorName)
+          .map(p => p.teamName ? p.teamName.toLowerCase().trim() : '')
+          .filter(t => t && t !== 'not assigned');
+
+        return parsed.filter(n => {
+          const isTargetEmail = n.targetEmail && n.targetEmail.toLowerCase() === currentUser.email.toLowerCase();
+          const isTargetTeam = n.targetTeam && myTeams.includes(n.targetTeam.toLowerCase().trim());
+          
+          if (!(isTargetEmail || isTargetTeam)) return false;
+
+          // Enforce strict Mentor notification rules
+          const title = (n.title || '').toLowerCase();
+          const message = (n.message || '').toLowerCase();
+          return (
+            title.includes('mentor assigned') ||
+            title.includes('team assigned') ||
+            message.includes('has been assigned as mentor') ||
+            message.includes('academic mentor') ||
+            title.includes('report uploaded') ||
+            title.includes('new report') ||
+            message.includes('uploaded a report') ||
+            title.includes('reminder') ||
+            title.includes('near') ||
+            message.includes('due date') ||
+            message.includes('deadline') ||
+            message.includes('days left') ||
+            message.includes('prior')
+          );
+        });
+      }
+    } catch {}
+    return [];
+  });
 
   React.useEffect(() => {
     const handleFocus = async () => {
@@ -84,22 +137,57 @@ const MentorDashboard = () => {
           fullName: u.name,
           email: u.email,
           role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
-          collegeName: 'ProjectPilot University',
+          collegeName: u.collegeName || '',
           department: u.department || 'Computer Science & Engineering',
           status: 'Active',
           team: u.team || 'Not Assigned'
         }));
         localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
 
+        let fetchedTeams = [];
+        try {
+          fetchedTeams = await api.listTeams() || [];
+          localStorage.setItem('teams', JSON.stringify(fetchedTeams));
+        } catch (teamErr) {
+          console.warn('Failed to fetch teams:', teamErr);
+          fetchedTeams = JSON.parse(localStorage.getItem('teams') || '[]');
+        }
+
         const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        const myUserRecord = mappedUsers.find(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
+        
+        let needsUpdate = false;
+        if (myUserRecord) {
+          if (currentUser.collegeName !== myUserRecord.collegeName) {
+            currentUser.collegeName = myUserRecord.collegeName || '';
+            needsUpdate = true;
+          }
+          if (currentUser.department !== myUserRecord.department) {
+            currentUser.department = myUserRecord.department || 'Computer Science & Engineering';
+            needsUpdate = true;
+          }
+        }
+        if (needsUpdate) {
+          localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        }
+
         const loggedInMentorName = currentUser.fullName || currentUser.name || 'Dr. Kumar';
         
         const mentorProjects = (fetchedProj || []).filter(p => p.mentor && p.mentor.toLowerCase() === loggedInMentorName.toLowerCase());
 
         const activeTeamsList = mentorProjects.map((p, idx) => {
-          const members = mappedUsers.filter(u => u.team && u.team.toLowerCase() === p.teamName?.toLowerCase());
-          const leader = mappedUsers.find(u => u.team && u.team.toLowerCase() === p.teamName?.toLowerCase() && u.role === 'Team Leader');
+          const isUserInTeam = (user, tName) => {
+            if (!user || !user.team || !tName) return false;
+            return user.team.split(',').map(t => t.trim().toLowerCase()).includes(tName.toLowerCase());
+          };
+          const members = mappedUsers.filter(u => isUserInTeam(u, p.teamName));
+          const leader = mappedUsers.find(u => isUserInTeam(u, p.teamName) && u.role === 'Team Leader');
           
+          const matchedDbTeam = fetchedTeams.find(dt => dt.name && p.teamName && dt.name.toLowerCase() === p.teamName.toLowerCase());
+          const resolvedLeader = matchedDbTeam && matchedDbTeam.leaderName && matchedDbTeam.leaderName !== 'Not Assigned'
+            ? matchedDbTeam.leaderName
+            : (leader ? (leader.fullName || leader.name) : 'Not Assigned');
+
           return {
             id: p.id || `team-${idx}`,
             rank: idx + 1,
@@ -109,24 +197,135 @@ const MentorDashboard = () => {
             mentor: p.mentor,
             status: p.health >= 95 ? 'Excellent' : p.health >= 80 ? 'Very Good' : p.health >= 60 ? 'Good' : 'Poor',
             membersCount: members.length,
-            leaderName: leader ? (leader.fullName || leader.name) : 'Not Assigned',
+            leaderName: resolvedLeader,
             progress: p.progress || 0,
             domain: p.domain || 'General'
           };
         });
 
         setTeams(activeTeamsList);
+
+        let liveNotifs = [];
+        try {
+          liveNotifs = await api.listNotifications() || [];
+          localStorage.setItem('notifications', JSON.stringify(liveNotifs));
+        } catch (apiErr) {
+          console.warn('Failed to fetch notifications from backend inside mentor dashboard:', apiErr);
+          const storedNotifs = localStorage.getItem('notifications');
+          liveNotifs = storedNotifs ? JSON.parse(storedNotifs) : [];
+        }
+
+        if (currentUser.email) {
+          const myTeams = activeTeamsList.map(t => t.name.toLowerCase().trim());
+          const filteredNotifs = liveNotifs.filter(n => {
+            const isTargetEmail = n.targetEmail && n.targetEmail.toLowerCase() === currentUser.email.toLowerCase();
+            const isTargetTeam = n.targetTeam && myTeams.includes(n.targetTeam.toLowerCase().trim());
+            
+            if (!(isTargetEmail || isTargetTeam)) return false;
+
+            // Enforce strict Mentor notification rules
+            const title = (n.title || '').toLowerCase();
+            const message = (n.message || '').toLowerCase();
+            return (
+              title.includes('mentor assigned') ||
+              title.includes('team assigned') ||
+              message.includes('has been assigned as mentor') ||
+              message.includes('academic mentor') ||
+              title.includes('report uploaded') ||
+              title.includes('new report') ||
+              message.includes('uploaded a report') ||
+              title.includes('reminder') ||
+              title.includes('near') ||
+              message.includes('due date') ||
+              message.includes('deadline') ||
+              message.includes('days left') ||
+              message.includes('prior')
+            );
+          });
+          setNotifications(filteredNotifs);
+        }
+
+        // Trigger background deadline reminders check
+        if (fetchedProj) {
+          checkDeadlineReminders(fetchedProj);
+        }
       } catch (err) {
         console.error(err);
       }
     };
 
+    const handleStorageChange = (e) => {
+      if (e.key === 'notifications' && e.newValue) {
+        const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        if (currentUser.email) {
+          const parsed = JSON.parse(e.newValue);
+          
+          const allProjects = JSON.parse(localStorage.getItem('projects') || '[]');
+          const loggedInMentorName = (currentUser.fullName || currentUser.name || '').toLowerCase().trim();
+          const myTeams = allProjects
+            .filter(p => p.mentor && p.mentor.toLowerCase().trim() === loggedInMentorName)
+            .map(p => p.teamName ? p.teamName.toLowerCase().trim() : '')
+            .filter(t => t && t !== 'not assigned');
+
+          setNotifications(parsed.filter(n => {
+            const isTargetEmail = n.targetEmail && n.targetEmail.toLowerCase() === currentUser.email.toLowerCase();
+            const isTargetTeam = n.targetTeam && myTeams.includes(n.targetTeam.toLowerCase().trim());
+            
+            if (!(isTargetEmail || isTargetTeam)) return false;
+
+            const title = (n.title || '').toLowerCase();
+            const message = (n.message || '').toLowerCase();
+            return (
+              title.includes('mentor assigned') ||
+              title.includes('team assigned') ||
+              message.includes('has been assigned as mentor') ||
+              message.includes('academic mentor') ||
+              title.includes('report uploaded') ||
+              title.includes('new report') ||
+              message.includes('uploaded a report') ||
+              title.includes('reminder') ||
+              title.includes('near') ||
+              message.includes('due date') ||
+              message.includes('deadline') ||
+              message.includes('days left') ||
+              message.includes('prior')
+            );
+          }));
+        }
+      }
+    };
+
     handleFocus();
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  const handleClearAllNotifications = async () => {
+    try {
+      for (const n of notifications) {
+        await api.deleteNotification(n.id);
+      }
+    } catch (err) {
+      console.warn('Failed to clear notifications on backend:', err);
+    }
+    try {
+      const stored = localStorage.getItem('notifications');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const remaining = parsed.filter(n => !notifications.some(vn => vn.id === n.id));
+        localStorage.setItem('notifications', JSON.stringify(remaining));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setNotifications([]);
+  };
 
   const handleLogout = () => {
     setShowLogoutModal(true);
@@ -142,10 +341,6 @@ const MentorDashboard = () => {
     setActiveTab('report-review');
   };
 
-  const handleViewRiskDetails = (riskTeam) => {
-    setSelectedRiskTeam(riskTeam);
-    setActiveTab('risk-team-details');
-  };
 
   const handleUpdateReportStatus = (reportId, projectId, status, feedback) => {
     try {
@@ -171,7 +366,7 @@ const MentorDashboard = () => {
             }
 
             const weekLower = reportWeek.toLowerCase().trim();
-            const isWeeklyPattern = /^week\s+\d+$/i.test(weekLower) || weekLower === 'week';
+            const isWeekly = weekLower.includes('week');
 
             const matchingTask = (p.tasks || []).find(t => 
               t.reportDetails && 
@@ -179,8 +374,9 @@ const MentorDashboard = () => {
                t.reportDetails.fileName === (matchingReport ? matchingReport.fileName : '') ||
                (reportWeek !== 'Report' && t.reportDetails.week === reportWeek))
             );
-            if (matchingTask || !isWeeklyPattern) {
-              isTaskReport = true;
+            
+            const isTaskReport = matchingTask || !isWeekly;
+            if (isTaskReport) {
               if (matchingTask) {
                 taskName = matchingTask.name;
               } else {
@@ -230,7 +426,14 @@ const MentorDashboard = () => {
               } else {
                 // Milestone status should be updated as Completed
                 const weekLower = reportWeek.toLowerCase();
-                let mileIdx = updatedMilestones.findIndex(m => m.name.toLowerCase().includes(weekLower));
+                let mileIdx = updatedMilestones.findIndex(m => m.name.toLowerCase().includes(weekLower) || weekLower.includes(m.name.toLowerCase()));
+                if (mileIdx === -1) {
+                  const weekNumMatch = weekLower.match(/week\s+(\d+)/);
+                  if (weekNumMatch) {
+                    const weekNumStr = `week ${weekNumMatch[1]}`;
+                    mileIdx = updatedMilestones.findIndex(m => m.name.toLowerCase().includes(weekNumStr) || weekNumStr.includes(m.name.toLowerCase()));
+                  }
+                }
                 if (mileIdx === -1) {
                   mileIdx = updatedMilestones.findIndex(m => m.status !== 'Completed');
                 }
@@ -268,11 +471,31 @@ const MentorDashboard = () => {
               }
             }
 
+            // Update global mentorFeedback comments list
+            const dateStr = new Date().toISOString().split('T')[0];
+            const currentFeedback = p.mentorFeedback || { latestFeedback: 'No feedback submitted yet.', date: '--', allComments: [] };
+            
+            let updatedMentorFeedback = { ...currentFeedback };
+            if (feedback && feedback.trim()) {
+              const newComment = {
+                id: `fb-${Date.now()}`,
+                author: loggedInMentorName,
+                date: dateStr,
+                text: `[Report Review Feedback for ${reportWeek}]: ${feedback}`
+              };
+              updatedMentorFeedback = {
+                latestFeedback: feedback,
+                date: dateStr,
+                allComments: [newComment, ...(currentFeedback.allComments || [])]
+              };
+            }
+
             return {
               ...p,
               weeklyReports: updatedReports,
               tasks: updatedTasks,
-              milestones: updatedMilestones
+              milestones: updatedMilestones,
+              mentorFeedback: updatedMentorFeedback
             };
           }
           return p;
@@ -304,11 +527,12 @@ const MentorDashboard = () => {
           const storedUsers = localStorage.getItem('registeredUsers');
           if (storedUsers) {
             const registeredUsers = JSON.parse(storedUsers);
-            const teamUsers = registeredUsers.filter(u => u.team && u.team.toLowerCase() === targetTeamName.toLowerCase());
+            const isUserInTeam = (user, tName) => {
+              if (!user || !user.team || !tName) return false;
+              return user.team.split(',').map(t => t.trim().toLowerCase()).includes(tName.toLowerCase());
+            };
+            const teamUsers = registeredUsers.filter(u => isUserInTeam(u, targetTeamName));
             
-            const storedNotifs = localStorage.getItem('notifications');
-            const notificationsList = storedNotifs ? JSON.parse(storedNotifs) : [];
-
             let notifTitle = 'Report Reviewed';
             let notifDesc = '';
             
@@ -328,80 +552,16 @@ const MentorDashboard = () => {
               notifTitle = 'Weekly Report Rejected';
               notifDesc = `❌ ${loggedInMentorName} rejected weekly report "${reportWeek}". Milestone status set to Pending. Reason: "${feedback}"`;
             }
-
-            teamUsers.forEach(user => {
-              notificationsList.unshift({
-                id: `notif-${Date.now()}-${Math.random()}`,
-                title: notifTitle,
-                description: notifDesc,
-                message: notifDesc,
-                time: 'Just now',
-                type: status === 'Approved' ? 'success' : status === 'Reassigned' ? 'warning' : 'danger',
-                targetEmail: user.email.toLowerCase(),
-                targetTeam: targetTeamName.toLowerCase()
-              });
-            });
-
-            localStorage.setItem('notifications', JSON.stringify(notificationsList));
-          }
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleSendRecommendation = (teamId, text) => {
-    try {
-      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-      const loggedInMentorName = currentUser.fullName || currentUser.name || 'Dr. Kumar';
-      
-      const storedProj = localStorage.getItem('projects');
-      if (storedProj) {
-        const projects = JSON.parse(storedProj);
-        let targetTeamName = '';
-        const updated = projects.map(p => {
-          if (p.id === teamId || (p.teamName && selectedRiskTeam && p.teamName.toLowerCase() === selectedRiskTeam.name.toLowerCase())) {
-            targetTeamName = p.teamName;
-            return {
-              ...p,
-              mentorFeedback: text
-            };
-          }
-          return p;
-        });
-        localStorage.setItem('projects', JSON.stringify(updated));
-        // Sync project status / mentor feedback back to MongoDB
-        updated.forEach(async (p) => {
-          try {
-            await api.updateProject(p.id, p);
-          } catch (err) {
-            console.warn('Syncing project feedback failed:', err);
-          }
-        });
-
-        // Create notifications for all students/team leaders belonging to this team!
-        if (targetTeamName) {
-          const storedUsers = localStorage.getItem('registeredUsers');
-          if (storedUsers) {
-            const registeredUsers = JSON.parse(storedUsers);
-            const teamUsers = registeredUsers.filter(u => u.team && u.team.toLowerCase() === targetTeamName.toLowerCase());
             
-            const storedNotifs = localStorage.getItem('notifications');
-            const notificationsList = storedNotifs ? JSON.parse(storedNotifs) : [];
-
             teamUsers.forEach(user => {
-              notificationsList.unshift({
-                id: `notif-${Date.now()}-${Math.random()}`,
-                title: 'New Advisor Recommendation',
-                description: `${loggedInMentorName} sent feedback: "${text.slice(0, 60)}${text.length > 60 ? '...' : ''}"`,
-                time: 'Just now',
-                type: 'warning',
-                targetEmail: user.email.toLowerCase()
-              });
+              addNotification(
+                notifTitle,
+                notifDesc,
+                user.email.toLowerCase(),
+                targetTeamName.toLowerCase(),
+                status === 'Approved' ? 'success' : status === 'Reassigned' ? 'warning' : 'danger'
+              );
             });
-
-            localStorage.setItem('notifications', JSON.stringify(notificationsList));
           }
         }
       }
@@ -409,6 +569,8 @@ const MentorDashboard = () => {
       console.error(e);
     }
   };
+
+
 
   const renderDashboardMain = () => {
     const mentorTeams = teams;
@@ -490,7 +652,14 @@ const MentorDashboard = () => {
       case 'active-teams':
         return <ActiveTeams teams={teams} onViewTeam={handleViewTeam} />;
       case 'team-details':
-        return <TeamDetails team={selectedTeam} onBack={() => setActiveTab('active-teams')} />;
+        return <TeamDetails 
+          team={selectedTeam} 
+          onBack={() => setActiveTab('active-teams')} 
+          onUpdateTeamHealth={(teamId, newHealth) => {
+            setSelectedTeam(prev => prev ? { ...prev, health: newHealth } : null);
+            setTeams(prev => prev.map(t => t.id === teamId ? { ...t, health: newHealth, status: newHealth >= 95 ? 'Excellent' : newHealth >= 80 ? 'Very Good' : newHealth >= 60 ? 'Good' : 'Poor' } : t));
+          }}
+        />;
       case 'reports':
         return <Reports onReviewReport={handleReviewReport} />;
       case 'report-review':
@@ -502,28 +671,18 @@ const MentorDashboard = () => {
             projects={JSON.parse(localStorage.getItem('projects') || '[]')}
           />
         );
-      case 'risk-teams':
-        return <RiskTeams onViewRiskDetails={handleViewRiskDetails} />;
-      case 'risk-team-details':
-        return (
-          <RiskTeamDetails 
-            team={selectedRiskTeam} 
-            onBack={() => setActiveTab('risk-teams')} 
-            onSendRecommendation={handleSendRecommendation}
-          />
-        );
+      case 'suggestions':
+        return <Suggestions />;
       case 'settings':
         return <Settings />;
       case 'notifications':
         return (
           <NotificationsPage 
             notifications={notifications} 
-            onClearAll={() => setNotifications([])} 
+            onClearAll={handleClearAllNotifications} 
             onBack={() => setActiveTab('dashboard')} 
           />
         );
-      case 'chat-guru':
-        return <ChatGuru />;
       case 'profile':
         return <Profile />;
       case 'dashboard':
@@ -590,7 +749,6 @@ const MentorDashboard = () => {
                     { id: 'active-teams', label: 'Active Teams' },
                     { id: 'reports', label: 'Reports' },
                     { id: 'risk-teams', label: 'Risk Teams' },
-                    { id: 'chat-guru', label: 'Chat Guru' },
                     { id: 'settings', label: 'Settings' },
                     { id: 'profile', label: 'Profile' },
                   ].map((tab) => (

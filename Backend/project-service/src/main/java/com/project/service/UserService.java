@@ -14,21 +14,63 @@ public class UserService {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private com.project.repository.TeamRepository teamRepository;
+
+    private void populateDynamicTeams(User user) {
+        if (user == null || teamRepository == null) return;
+        
+        java.util.List<com.project.entity.Team> teams = teamRepository.findAll();
+        java.util.List<String> userTeams = new java.util.ArrayList<>();
+        
+        String userName = user.getName();
+        String userRole = user.getRole();
+        
+        if (userName != null) {
+            String normalizedName = userName.trim();
+            if ("TEAM_LEADER".equals(userRole) || "Team Leader".equals(userRole)) {
+                for (com.project.entity.Team t : teams) {
+                    if (t.getLeaderName() != null && t.getLeaderName().trim().equalsIgnoreCase(normalizedName)) {
+                        userTeams.add(t.getName());
+                    }
+                }
+            }
+        }
+        
+        if (!userTeams.isEmpty()) {
+            user.setTeam(String.join(",", userTeams));
+        } else if (user.getTeam() == null || user.getTeam().trim().isEmpty() || "Not Assigned".equalsIgnoreCase(user.getTeam())) {
+            user.setTeam("Not Assigned");
+        }
+    }
+
     public void addUser(User user) {
         validateUser(user);
         userRepository.save(user);
     }
 
     public List<User> getAllUsers() {
-        return userRepository.findAll();
+        List<User> users = userRepository.findAll();
+        for (User u : users) {
+            populateDynamicTeams(u);
+        }
+        return users;
     }
 
     public org.springframework.data.domain.Page<User> getAllUsers(org.springframework.data.domain.Pageable pageable) {
-        return userRepository.findAll(pageable);
+        org.springframework.data.domain.Page<User> page = userRepository.findAll(pageable);
+        for (User u : page.getContent()) {
+            populateDynamicTeams(u);
+        }
+        return page;
     }
 
     public User getUserById(String id) {
-        return userRepository.findById(id).orElse(null);
+        User user = userRepository.findById(id).orElse(null);
+        if (user != null) {
+            populateDynamicTeams(user);
+        }
+        return user;
     }
 
     public void updateUser(User user) {
@@ -51,14 +93,6 @@ public class UserService {
 
         if (user.getDepartment() == null || user.getDepartment().trim().isEmpty()) {
             throw new IllegalArgumentException("Department is required");
-        }
-
-        if (user.getSalary() == null || user.getSalary().doubleValue() <= 0) {
-            throw new IllegalArgumentException("Salary must be greater than zero");
-        }
-
-        if (user.getJoinDate() == null) {
-            throw new IllegalArgumentException("Join date is required");
         }
     }
 }

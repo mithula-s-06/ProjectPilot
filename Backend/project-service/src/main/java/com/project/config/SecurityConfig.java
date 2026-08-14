@@ -47,14 +47,14 @@ public class SecurityConfig {
                     // see a misleading 403 instead of the real 500.
                     .requestMatchers("/error").permitAll()
                     // Read access: any logged-in user with any project role.
-                    .requestMatchers(HttpMethod.GET, "/api/users/**", "/api/projects/**", "/api/teams/**")
+                    .requestMatchers(HttpMethod.GET, "/api/users/**", "/api/projects/**", "/api/teams/**", "/api/notifications/**", "/api/files/**")
                         .hasAnyRole("STUDENT", "TEAM_LEADER", "MENTOR", "ADMIN")
                     // Create/update: users with any project role.
-                    .requestMatchers(HttpMethod.POST, "/api/users/**", "/api/projects/**", "/api/teams/**")
+                    .requestMatchers(HttpMethod.POST, "/api/users/**", "/api/projects/**", "/api/teams/**", "/api/notifications/**", "/api/files/**")
                         .hasAnyRole("STUDENT", "TEAM_LEADER", "MENTOR", "ADMIN")
-                    .requestMatchers(HttpMethod.PUT, "/api/users/**", "/api/projects/**", "/api/teams/**")
+                    .requestMatchers(HttpMethod.PUT, "/api/users/**", "/api/projects/**", "/api/teams/**", "/api/notifications/**")
                         .hasAnyRole("STUDENT", "TEAM_LEADER", "MENTOR", "ADMIN")
-                    .requestMatchers(HttpMethod.DELETE, "/api/users/**", "/api/projects/**", "/api/teams/**")
+                    .requestMatchers(HttpMethod.DELETE, "/api/users/**", "/api/projects/**", "/api/teams/**", "/api/notifications/**")
                         .hasAnyRole("STUDENT", "TEAM_LEADER", "MENTOR", "ADMIN")
                     .anyRequest().authenticated())
             .exceptionHandling(handling -> handling

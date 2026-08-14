@@ -1,8 +1,28 @@
 import React, { useState } from 'react';
 import { FiActivity, FiChevronDown, FiChevronUp, FiCpu, FiTrendingUp } from 'react-icons/fi';
 
-const HealthScoreCard = ({ health, healthDetails }) => {
+const HealthScoreCard = ({ health, healthDetails, onUpdateHealth }) => {
   const [expanded, setExpanded] = useState(false);
+  const [tempHealth, setTempHealth] = useState(health);
+  const [saving, setSaving] = useState(false);
+
+  const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+  const isMentor = currentUser.role === 'Mentor' || currentUser.role === 'MENTOR';
+
+  const handleSaveHealth = async () => {
+    if (onUpdateHealth) {
+      setSaving(true);
+      try {
+        await onUpdateHealth(tempHealth);
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
+  React.useEffect(() => {
+    setTempHealth(health);
+  }, [health]);
 
   const getHealthBadgeClass = (score) => {
     if (score >= 95) return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
@@ -55,7 +75,7 @@ const HealthScoreCard = ({ health, healthDetails }) => {
             <h3 className="text-sm font-extrabold uppercase tracking-widest text-brand-text">
               Project Health Score
             </h3>
-            <span className="text-xs text-brand-text-muted">Click to view trend details</span>
+
           </div>
         </div>
 
@@ -79,75 +99,47 @@ const HealthScoreCard = ({ health, healthDetails }) => {
       {expanded && (
         <div className="px-6 pb-6 pt-2 border-t border-brand-border/40 space-y-6 animate-fade-in max-h-[500px] overflow-y-auto custom-scrollbar text-left">
           
-          {/* 1. SVG Line Chart */}
+          {/* Mentor Update Form (Only visible to Mentor) */}
+          {isMentor && (
+            <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-primary">
+                Update Project Health Score
+              </h4>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="100" 
+                  value={tempHealth} 
+                  onChange={(e) => setTempHealth(parseInt(e.target.value))}
+                  className="w-full sm:max-w-xs accent-primary"
+                />
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="number" 
+                    min="0" 
+                    max="100" 
+                    value={tempHealth} 
+                    onChange={(e) => setTempHealth(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                    className="px-2.5 py-1 rounded-lg border border-brand-border bg-brand-card text-brand-text text-xs font-extrabold w-16 text-center focus:border-cyan-500 focus:outline-none"
+                  />
+                  <button
+                    onClick={handleSaveHealth}
+                    disabled={saving}
+                    className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold text-[10px] uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Historical stats metrics */}
           <div className="space-y-2">
             <h4 className="text-xs font-bold uppercase tracking-wider text-brand-text-muted">
               Historical Score Trend
             </h4>
-            
-            <div className="w-full bg-slate-50/50 dark:bg-slate-900/10 border border-brand-border rounded-xl p-3 flex justify-center">
-              <svg viewBox={`0 0 ${width} ${height}`} className="w-full max-w-lg overflow-visible">
-                {/* Grid Lines */}
-                <line x1={padding} y1={padding} x2={width - padding} y2={padding} stroke="currentColor" strokeDasharray="3,3" className="text-brand-border/40" />
-                <line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="currentColor" strokeDasharray="3,3" className="text-brand-border/40" />
-                <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="currentColor" strokeDasharray="3,3" className="text-brand-border/40" />
-
-                {/* Score Path Line */}
-                <path
-                  d={pathD}
-                  fill="none"
-                  stroke="url(#chart-glow-gradient)"
-                  strokeWidth="3.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-
-                {/* Gradients */}
-                <defs>
-                  <linearGradient id="chart-glow-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#17D4E8" />
-                    <stop offset="100%" stopColor="#10B981" />
-                  </linearGradient>
-                </defs>
-
-                {/* Points Circle Dots */}
-                {points.map((p, idx) => (
-                  <g key={idx} className="group/dot cursor-pointer">
-                    <circle
-                      cx={p.x}
-                      cy={p.y}
-                      r="4.5"
-                      fill="#FFFFFF"
-                      stroke="#10B981"
-                      strokeWidth="2.5"
-                      className="hover:r-6 transition-all duration-300"
-                    />
-                    {/* Tooltip on dot */}
-                    <text
-                      x={p.x}
-                      y={p.y - 10}
-                      textAnchor="middle"
-                      className="text-[9px] font-extrabold fill-brand-text opacity-0 group-hover/dot:opacity-100 transition-opacity duration-300"
-                    >
-                      {p.val}%
-                    </text>
-                  </g>
-                ))}
-
-                {/* X Axis Labels */}
-                {points.map((p, idx) => (
-                  <text
-                    key={idx}
-                    x={p.x}
-                    y={height - 2}
-                    textAnchor="middle"
-                    className="text-[9px] font-bold fill-brand-text-muted"
-                  >
-                    {months[idx]}
-                  </text>
-                ))}
-              </svg>
-            </div>
           </div>
 
           {/* 2. Monthly Progress Indicators list */}
@@ -167,20 +159,7 @@ const HealthScoreCard = ({ health, healthDetails }) => {
             ))}
           </div>
 
-          {/* 3. AI Summary */}
-          <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 flex gap-3">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary h-fit border border-primary/10 flex-shrink-0">
-              <FiCpu className="w-4 h-4 animate-pulse" />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-primary mb-1">
-                AI Diagnostic Summary
-              </h4>
-              <p className="text-xs text-brand-text-muted leading-relaxed">
-                {healthDetails?.aiSummary || 'Analysis indicates stable parameter updates. Sprints are completing within bounds, and code metrics meet platform specifications.'}
-              </p>
-            </div>
-          </div>
+
 
         </div>
       )}

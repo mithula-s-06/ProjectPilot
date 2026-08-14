@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { 
-  FiActivity, FiTrendingUp, FiAlertTriangle, FiCpu, 
-  FiArrowLeft, FiMail, FiShield, FiAward, FiUser, FiX 
+  FiArrowLeft, FiMail, FiShield, FiAward, FiX 
 } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
-import { api } from '../utils/api';
+import { api, addNotification } from '../utils/api';
 import AdminNavbar from '../components/AdminNavbar';
 import Sidebar from '../components/Sidebar';
 import DashboardCards from '../components/DashboardCards';
@@ -139,23 +138,64 @@ const AdminDashboard = () => {
       const stored = localStorage.getItem('registeredUsers');
       if (stored) {
         const parsed = JSON.parse(stored);
-        return parsed.map(u => ({
-          id: u.id || `usr-${Date.now()}-${Math.random()}`,
-          name: u.fullName || u.name,
-          email: u.email,
-          role: u.role === 'Student' ? 'Student' : u.role === 'Team Leader' ? 'Team Leader' : u.role === 'Mentor' ? 'Mentor' : u.role,
-          team: u.team || 'Not Assigned',
-          status: u.status || 'Active',
-          avatarInitials: u.avatarInitials || (u.fullName || u.name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
-          avatarBg: u.avatarBg || 'bg-primary/20 text-primary'
-        }));
+        const projectsStored = localStorage.getItem('projects');
+        const projects = projectsStored ? JSON.parse(projectsStored) : [];
+        return parsed.map(u => {
+          let resolvedTeam = u.team || 'Not Assigned';
+          const isMentor = u.role === 'Mentor' || u.role === 'MENTOR';
+          if (isMentor) {
+            const mentorName = (u.fullName || u.name || '').toLowerCase().trim();
+            const assignedTeams = projects
+              .filter(p => p.mentor && p.mentor.toLowerCase().trim() === mentorName)
+              .map(p => p.teamName)
+              .filter(t => t && t !== 'Not Assigned');
+            const uniqueTeams = [...new Set(assignedTeams)];
+            resolvedTeam = uniqueTeams.length > 0 ? uniqueTeams.join(', ') : 'Not Assigned';
+          }
+          return {
+            id: u.id || `usr-${Date.now()}-${Math.random()}`,
+            name: u.fullName || u.name,
+            email: u.email,
+            role: u.role === 'Student' ? 'Student' : u.role === 'Team Leader' ? 'Team Leader' : u.role === 'Mentor' ? 'Mentor' : u.role,
+            team: resolvedTeam,
+            status: u.status || 'Active',
+            avatarInitials: u.avatarInitials || (u.fullName || u.name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
+            avatarBg: u.avatarBg || 'bg-primary/20 text-primary'
+          };
+        });
       }
     } catch (err) {
       console.error(err);
     }
      return [];
   });
-  const [notifications, setNotifications] = useState([]);
+  const [notifications, setNotifications] = useState(() => {
+    try {
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      const email = currentUser.email?.toLowerCase();
+      
+      const stored = localStorage.getItem('notifications');
+      if (stored && email) {
+        const parsed = JSON.parse(stored);
+        return parsed.filter(n => {
+          const isTargetEmail = n.targetEmail && n.targetEmail.toLowerCase() === email;
+          if (!isTargetEmail) return false;
+
+          const title = (n.title || '').toLowerCase();
+          const message = (n.message || '').toLowerCase();
+          
+          const isSignup = title.includes('new user registration') || title.includes('new user has signed up') || message.includes('registered as') || message.includes('signed up');
+          const isTeamCreated = title.includes('new team created') || message.includes('team has been created');
+          const isMentorAssigned = title.includes('mentor assigned') || message.includes('assigned to your team') || message.includes('has been assigned as mentor') || message.includes('academic mentor');
+          
+          return isSignup || isTeamCreated || isMentorAssigned;
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  });
 
   // Selected team state for Assign Mentor Modal (null if modal closed)
   const [assigningTeam, setAssigningTeam] = useState(null);
@@ -186,7 +226,7 @@ const AdminDashboard = () => {
             fullName: u.name,
             email: u.email,
             role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
-            collegeName: 'ProjectPilot University',
+            collegeName: u.collegeName || '',
             department: u.department || 'Computer Science & Engineering',
             status: 'Active',
             team: u.team || 'Not Assigned'
@@ -209,16 +249,29 @@ const AdminDashboard = () => {
           projects = storedProj ? JSON.parse(storedProj) : [];
         }
 
-        setUsers(mappedUsers.map(u => ({
-          id: u.id || `usr-${Date.now()}-${Math.random()}`,
-          name: u.fullName || u.name,
-          email: u.email,
-          role: u.role,
-          team: u.team || 'Not Assigned',
-          status: u.status || 'Active',
-          avatarInitials: (u.fullName || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
-          avatarBg: 'bg-primary/20 text-primary'
-        })));
+        setUsers(mappedUsers.map(u => {
+          let resolvedTeam = u.team || 'Not Assigned';
+          const isMentor = u.role === 'Mentor' || u.role === 'MENTOR';
+          if (isMentor) {
+            const mentorName = (u.fullName || u.name || '').toLowerCase().trim();
+            const assignedTeams = projects
+              .filter(p => p.mentor && p.mentor.toLowerCase().trim() === mentorName)
+              .map(p => p.teamName)
+              .filter(t => t && t !== 'Not Assigned');
+            const uniqueTeams = [...new Set(assignedTeams)];
+            resolvedTeam = uniqueTeams.length > 0 ? uniqueTeams.join(', ') : 'Not Assigned';
+          }
+          return {
+            id: u.id || `usr-${Date.now()}-${Math.random()}`,
+            name: u.fullName || u.name,
+            email: u.email,
+            role: u.role,
+            team: resolvedTeam,
+            status: u.status || 'Active',
+            avatarInitials: (u.fullName || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
+            avatarBg: 'bg-primary/20 text-primary'
+          };
+        }));
 
         let databaseTeams = [];
         try {
@@ -246,7 +299,9 @@ const AdminDashboard = () => {
             const calculatedMembersCount = members.length + (leaderExists && !leaderIsMatched ? 1 : 0);
 
             activeTeamsList.push({
-              id: p.id || `team-${Date.now()}-${Math.random()}`,
+              id: matchedDbTeam ? matchedDbTeam.id : (p.id || `team-${Date.now()}-${Math.random()}`),
+              projectId: p.id,
+              projectName: p.name,
               rank: activeTeamsList.length + 1,
               name: p.teamName,
               project: p.name,
@@ -275,7 +330,9 @@ const AdminDashboard = () => {
                 const calculatedMembersCount = members.length + (leaderExists && !leaderIsMatched ? 1 : 0);
 
                 activeTeamsList.push({
-                  id: `team-${Date.now()}-${Math.random()}`,
+                  id: matchedDbTeam ? matchedDbTeam.id : `team-${Date.now()}-${Math.random()}`,
+                  projectId: matchedDbTeam ? matchedDbTeam.projectId : null,
+                  projectName: matchedDbTeam ? matchedDbTeam.projectName : null,
                   rank: activeTeamsList.length + 1,
                   name: tName,
                   project: 'No Project Declared Yet',
@@ -305,6 +362,61 @@ const AdminDashboard = () => {
         }));
         setMentors(nextMentors);
 
+        let liveNotifs = [];
+        try {
+          liveNotifs = await api.listNotifications() || [];
+          localStorage.setItem('notifications', JSON.stringify(liveNotifs));
+        } catch (apiErr) {
+          console.warn('Failed to fetch notifications from backend inside admin dashboard:', apiErr);
+          const storedNotifs = localStorage.getItem('notifications');
+          liveNotifs = storedNotifs ? JSON.parse(storedNotifs) : [];
+        }
+
+         const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        if (currentUser.email) {
+          const email = currentUser.email.toLowerCase();
+          setNotifications(liveNotifs.filter(n => {
+            const isTargetEmail = n.targetEmail && n.targetEmail.toLowerCase() === email;
+            if (!isTargetEmail) return false;
+
+            const title = (n.title || '').toLowerCase();
+            const message = (n.message || '').toLowerCase();
+            
+            const isSignup = title.includes('new user registration') || title.includes('new user has signed up') || message.includes('registered as') || message.includes('signed up');
+            const isTeamCreated = title.includes('new team created') || message.includes('team has been created');
+            const isMentorAssigned = title.includes('mentor assigned') || message.includes('assigned to your team') || message.includes('has been assigned as mentor') || message.includes('academic mentor');
+            
+            return isSignup || isTeamCreated || isMentorAssigned;
+          }));
+        }
+
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    const handleStorageChange = (e) => {
+      try {
+        const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        if (e.key === 'notifications' && e.newValue) {
+          const parsed = JSON.parse(e.newValue);
+          if (currentUser.email) {
+            const email = currentUser.email.toLowerCase();
+            setNotifications(parsed.filter(n => {
+              const isTargetEmail = n.targetEmail && n.targetEmail.toLowerCase() === email;
+              if (!isTargetEmail) return false;
+
+              const title = (n.title || '').toLowerCase();
+              const message = (n.message || '').toLowerCase();
+              
+              const isSignup = title.includes('new user registration') || title.includes('new user has signed up') || message.includes('registered as') || message.includes('signed up');
+              const isTeamCreated = title.includes('new team created') || message.includes('team has been created');
+              const isMentorAssigned = title.includes('mentor assigned') || message.includes('assigned to your team') || message.includes('has been assigned as mentor') || message.includes('academic mentor');
+              
+              return isSignup || isTeamCreated || isMentorAssigned;
+            }));
+          }
+        }
       } catch (err) {
         console.error(err);
       }
@@ -312,38 +424,78 @@ const AdminDashboard = () => {
 
     handleFocus();
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   const handleLogout = () => {
     setShowLogoutModal(true);
   };
 
+  const handleClearAllNotifications = async () => {
+    try {
+      for (const n of notifications) {
+        await api.deleteNotification(n.id);
+      }
+    } catch (err) {
+      console.warn('Failed to clear notifications on backend:', err);
+    }
+    try {
+      const stored = localStorage.getItem('notifications');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const remaining = parsed.filter(n => !notifications.some(vn => vn.id === n.id));
+        localStorage.setItem('notifications', JSON.stringify(remaining));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setNotifications([]);
+  };
+
   // Callback to perform mentor assignment
   const handleAssignMentor = async (mentorName) => {
     if (!assigningTeam) return;
 
-    // Update the team with the mentor and status
+    // Fetch all database teams to ensure we have the correct team metadata
+    let databaseTeams = [];
+    try {
+      databaseTeams = await api.listTeams() || [];
+    } catch (e) {
+      console.warn('Failed to fetch teams before assignment:', e);
+    }
+    const matchedDbTeam = databaseTeams.find(dt => dt.id === assigningTeam.id || (dt.name && dt.name.toLowerCase() === assigningTeam.name.toLowerCase()));
+
+    const targetTeamId = matchedDbTeam ? matchedDbTeam.id : assigningTeam.id;
+    const teamPayload = {
+      id: targetTeamId,
+      name: assigningTeam.name,
+      projectId: assigningTeam.projectId || (matchedDbTeam ? matchedDbTeam.projectId : ''),
+      projectName: assigningTeam.projectName || (matchedDbTeam ? matchedDbTeam.projectName : ''),
+      mentorName: mentorName,
+      health: assigningTeam.health || 100,
+      leaderName: assigningTeam.leaderName || 'Not Assigned',
+      membersCount: assigningTeam.membersCount || 0,
+      status: assigningTeam.health >= 95 ? 'Excellent' : assigningTeam.health >= 80 ? 'Very Good' : 'Good',
+      rank: assigningTeam.rank || 1
+    };
+
+    // Update the team state with the mentor and status
     const updatedTeam = { 
       ...assigningTeam, 
+      id: targetTeamId,
       mentor: mentorName,
-      status: assigningTeam.health >= 95 ? 'Excellent' : assigningTeam.health >= 80 ? 'Very Good' : 'Good' 
+      projectId: teamPayload.projectId,
+      projectName: teamPayload.projectName,
+      status: teamPayload.status
     };
 
     try {
       // 1. Sync updated team to backend database
-      await api.updateTeam(assigningTeam.id, {
-        id: updatedTeam.id,
-        name: updatedTeam.name,
-        projectId: updatedTeam.projectId,
-        projectName: updatedTeam.projectName,
-        mentorName: mentorName,
-        health: updatedTeam.health,
-        leaderName: updatedTeam.leaderName,
-        membersCount: updatedTeam.membersCount,
-        status: updatedTeam.status,
-        rank: updatedTeam.rank
-      });
+      await api.updateTeam(targetTeamId, teamPayload);
 
       // Update state
       setTeams(prev => prev.map(t => t.id === assigningTeam.id ? updatedTeam : t));
@@ -386,6 +538,78 @@ const AdminDashboard = () => {
         }
       }
 
+      // Notify the new mentor and migrate historical notifications from the old mentor to the new mentor
+      try {
+        const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+        const mentorUser = registeredUsers.find(u => 
+          (u.role === 'Mentor' || u.role === 'MENTOR') && 
+          (u.fullName?.trim().toLowerCase() === mentorName.trim().toLowerCase() || u.name?.trim().toLowerCase() === mentorName.trim().toLowerCase())
+        );
+        const mentorEmail = mentorUser ? mentorUser.email : null;
+
+        if (mentorEmail) {
+          // Update mentor record in backend database and local registeredUsers memory
+          if (mentorUser) {
+            const mentorNameLower = mentorName.trim().toLowerCase();
+            const mentorAssignedTeams = updatedProj
+              .filter(p => p.mentor && p.mentor.toLowerCase().trim() === mentorNameLower)
+              .map(p => p.teamName)
+              .filter(t => t && t !== 'Not Assigned');
+            const uniqueTeams = [...new Set(mentorAssignedTeams)];
+            const newTeamsString = uniqueTeams.length > 0 ? uniqueTeams.join(', ') : 'Not Assigned';
+
+            try {
+              await api.updateUserProfile(mentorUser.id, {
+                name: mentorUser.fullName || mentorUser.name,
+                email: mentorUser.email,
+                role: 'MENTOR',
+                department: mentorUser.department || 'Computer Science & Engineering',
+                team: newTeamsString,
+                collegeName: mentorUser.collegeName || ''
+              });
+
+              mentorUser.team = newTeamsString;
+              localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
+            } catch (dbUserErr) {
+              console.warn('Failed to update mentor user document on assignment:', dbUserErr);
+            }
+          }
+
+          // 1. Notify the new mentor about the new assignment
+          await addNotification(
+            'New Team Assigned',
+            `You have been successfully assigned as the mentor for team "${assigningTeam.name}" under project "${assigningTeam.projectName || assigningTeam.project || assigningTeam.name}".`,
+            mentorEmail,
+            assigningTeam.name,
+            'success'
+          );
+
+          // 2. Migrate historical notifications from the old mentor to the new mentor
+          const oldMentorName = assigningTeam.mentor;
+          if (oldMentorName && oldMentorName !== 'Not Assigned') {
+            const oldMentorUser = registeredUsers.find(u => 
+              (u.role === 'Mentor' || u.role === 'MENTOR') && 
+              (u.fullName?.trim().toLowerCase() === oldMentorName.trim().toLowerCase() || u.name?.trim().toLowerCase() === oldMentorName.trim().toLowerCase())
+            );
+            const oldMentorEmail = oldMentorUser ? oldMentorUser.email : null;
+
+            if (oldMentorEmail && oldMentorEmail.toLowerCase() !== mentorEmail.toLowerCase()) {
+              const liveNotifs = await api.listNotifications() || [];
+              for (const n of liveNotifs) {
+                if (n.targetTeam && n.targetTeam.toLowerCase() === assigningTeam.name.toLowerCase()) {
+                  if (n.targetEmail && n.targetEmail.toLowerCase() === oldMentorEmail.toLowerCase()) {
+                    n.targetEmail = mentorEmail;
+                    await api.createNotification(n);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to notify new mentor or migrate historical notifications:', err);
+      }
+
       // Increment mentor workload
       const updatedMentors = mentors.map((mentor) => {
         if (mentor.name === mentorName) {
@@ -404,6 +628,44 @@ const AdminDashboard = () => {
         time: 'Just now',
       };
       setNotifications([newNotif, ...notifications]);
+
+      // Send mentor allocation notification to database/admin
+      try {
+        await addNotification(
+          'Mentor Assigned',
+          `Mentor "${mentorName}" was successfully assigned to team "${assigningTeam.name}".`,
+          'admin@pp.edu',
+          assigningTeam.name,
+          'success'
+        );
+
+        // Find mentor email and notify mentor
+        const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+        const mentorUser = registeredUsers.find(u => 
+          (u.role === 'Mentor' || u.role === 'MENTOR') && 
+          (u.fullName?.trim().toLowerCase() === mentorName.trim().toLowerCase() || u.name?.trim().toLowerCase() === mentorName.trim().toLowerCase())
+        );
+        if (mentorUser && mentorUser.email) {
+          await addNotification(
+            'New Team Assigned',
+            `You have been assigned as academic mentor to team "${assigningTeam.name}".`,
+            mentorUser.email,
+            assigningTeam.name,
+            'success'
+          );
+        }
+
+        // Notify team
+        await addNotification(
+          'Mentor Assigned',
+          `Academic mentor "${mentorName}" has been assigned to your team.`,
+          null,
+          assigningTeam.name,
+          'info'
+        );
+      } catch (notifErr) {
+        console.warn('Failed to send mentor assignment notifications:', notifErr);
+      }
 
       // Show neat in-page toast notification
       setToast({
@@ -480,6 +742,19 @@ const AdminDashboard = () => {
         // Sync deletion to MongoDB backend
         try {
           await api.deleteUserProfile(userId);
+
+          // Send user deletion notification to database/admin
+          try {
+            await addNotification(
+              'User Account Deleted',
+              `User account for "${userName}" (${userToDelete ? userToDelete.email : ''}) has been permanently deleted from platform directories.`,
+              'admin@pp.edu',
+              null,
+              'danger'
+            );
+          } catch (notifErr) {
+            console.warn('Failed to send admin user deletion notification:', notifErr);
+          }
         } catch (err) {
           console.warn('Deleting user profile in backend failed:', err);
         }
@@ -573,7 +848,7 @@ const AdminDashboard = () => {
         return (
           <NotificationsPage 
             notifications={notifications} 
-            onClearAll={() => setNotifications([])} 
+            onClearAll={handleClearAllNotifications} 
             onBack={() => setActiveTab('dashboard')} 
           />
         );

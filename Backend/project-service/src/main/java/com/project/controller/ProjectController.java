@@ -5,11 +5,15 @@ import com.project.entity.Task;
 import com.project.entity.Milestone;
 import com.project.entity.WeeklyReport;
 import com.project.repository.ProjectRepository;
+import com.project.repository.TaskRepository;
+import com.project.repository.MilestoneRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.project.service.AIService;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.UUID;
 
 @CrossOrigin(origins = "http://localhost:5173")
@@ -18,9 +22,15 @@ import java.util.UUID;
 public class ProjectController {
 
     private final ProjectRepository projectRepository;
+    private final TaskRepository taskRepository;
+    private final MilestoneRepository milestoneRepository;
+    private final AIService aiService;
 
-    public ProjectController(ProjectRepository projectRepository) {
+    public ProjectController(ProjectRepository projectRepository, TaskRepository taskRepository, MilestoneRepository milestoneRepository, AIService aiService) {
         this.projectRepository = projectRepository;
+        this.taskRepository = taskRepository;
+        this.milestoneRepository = milestoneRepository;
+        this.aiService = aiService;
     }
 
     @GetMapping
@@ -46,7 +56,7 @@ public class ProjectController {
         if (project.getId() == null || project.getId().isEmpty()) {
             project.setId(UUID.randomUUID().toString());
         }
-        return projectRepository.save(project);
+        return saveProjectAndSync(project);
     }
 
     @PutMapping("/{id}")
@@ -73,20 +83,58 @@ public class ProjectController {
                 project.setMilestones(projectDetails.getMilestones());
             }
             if (projectDetails.getWeeklyReports() != null) {
+                List<WeeklyReport> allReportsInDB = new ArrayList<>();
+                try {
+                    List<Project> allProjects = projectRepository.findAll();
+                    if (allProjects != null) {
+                        for (Project p : allProjects) {
+                            if (p.getWeeklyReports() != null) {
+                                allReportsInDB.addAll(p.getWeeklyReports());
+                            }
+                        }
+                    }
+                } catch (Exception e) {}
+
+                for (WeeklyReport r : projectDetails.getWeeklyReports()) {
+                    boolean isNew = true;
+                    if (project.getWeeklyReports() != null) {
+                        for (WeeklyReport existing : project.getWeeklyReports()) {
+                            if (existing.getId().equals(r.getId())) {
+                                isNew = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (isNew && "Submitted".equals(r.getSubmissionStatus())) {
+                        aiService.analyzeReport(r, allReportsInDB);
+                    }
+                }
                 project.setWeeklyReports(projectDetails.getWeeklyReports());
             }
-            Project updated = projectRepository.save(project);
+            if (projectDetails.getMentorFeedback() != null) {
+                project.setMentorFeedback(projectDetails.getMentorFeedback());
+            }
+            Project updated = saveProjectAndSync(project);
             return ResponseEntity.ok(updated);
         }).orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteProject(@PathVariable String id) {
-        if (!projectRepository.existsById(id)) {
-            return ResponseEntity.notFound().build();
-        }
-        projectRepository.deleteById(id);
-        return ResponseEntity.noContent().build();
+        return projectRepository.findById(id).map(project -> {
+            if (project.getTasks() != null) {
+                for (Task t : project.getTasks()) {
+                    taskRepository.deleteById(t.getId());
+                }
+            }
+            if (project.getMilestones() != null) {
+                for (Milestone m : project.getMilestones()) {
+                    milestoneRepository.deleteById(m.getId());
+                }
+            }
+            projectRepository.deleteById(id);
+            return ResponseEntity.noContent().<Void>build();
+        }).orElse(ResponseEntity.notFound().build());
     }
 
     // --- Embedded Tasks Operations ---
@@ -100,7 +148,7 @@ public class ProjectController {
             }
             task.setProjectName(project.getName());
             project.getTasks().add(task);
-            Project updated = projectRepository.save(project);
+            Project updated = saveProjectAndSync(project);
             return ResponseEntity.ok(updated);
         }).orElse(ResponseEntity.notFound().build());
     }
@@ -120,7 +168,7 @@ public class ProjectController {
                 }
             }
             if (found) {
-                Project updated = projectRepository.save(project);
+                Project updated = saveProjectAndSync(project);
                 return ResponseEntity.ok(updated);
             }
             return ResponseEntity.badRequest().<Project>build();
@@ -132,7 +180,7 @@ public class ProjectController {
         return projectRepository.findById(id).map(project -> {
             boolean removed = project.getTasks().removeIf(t -> t.getId().equals(taskId));
             if (removed) {
-                Project updated = projectRepository.save(project);
+                Project updated = saveProjectAndSync(project);
                 return ResponseEntity.ok(updated);
             }
             return ResponseEntity.badRequest().<Project>build();
@@ -146,7 +194,7 @@ public class ProjectController {
         return projectRepository.findById(id).map(project -> {
             milestone.setId(UUID.randomUUID().toString());
             project.getMilestones().add(milestone);
-            Project updated = projectRepository.save(project);
+            Project updated = saveProjectAndSync(project);
             return ResponseEntity.ok(updated);
         }).orElse(ResponseEntity.notFound().build());
     }
@@ -166,7 +214,7 @@ public class ProjectController {
                 }
             }
             if (found) {
-                Project updated = projectRepository.save(project);
+                Project updated = saveProjectAndSync(project);
                 return ResponseEntity.ok(updated);
             }
             return ResponseEntity.badRequest().<Project>build();
@@ -181,8 +229,31 @@ public class ProjectController {
             report.setId(UUID.randomUUID().toString());
             report.setSubmittedDate(LocalDate.now());
             report.setSubmissionStatus("Submitted");
+
+            // Fetch all existing reports in DB to compare similarity
+            List<WeeklyReport> allReportsInDB = new ArrayList<>();
+            try {
+                List<Project> allProjects = projectRepository.findAll();
+                if (allProjects != null) {
+                    for (Project p : allProjects) {
+                        if (p.getWeeklyReports() != null) {
+                            allReportsInDB.addAll(p.getWeeklyReports());
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                System.err.println("Failed to fetch all projects for similarity comparison: " + ex.getMessage());
+            }
+
+            // Run AI analysis
+            try {
+                aiService.analyzeReport(report, allReportsInDB);
+            } catch (Exception ex) {
+                System.err.println("AI analysis failed: " + ex.getMessage());
+            }
+
             project.getWeeklyReports().add(report);
-            Project updated = projectRepository.save(project);
+            Project updated = saveProjectAndSync(project);
             return ResponseEntity.ok(updated);
         }).orElse(ResponseEntity.notFound().build());
     }
@@ -200,10 +271,87 @@ public class ProjectController {
                 }
             }
             if (found) {
-                Project updated = projectRepository.save(project);
+                Project updated = saveProjectAndSync(project);
                 return ResponseEntity.ok(updated);
             }
             return ResponseEntity.badRequest().<Project>build();
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/{id}/reports/{reportId}/analyze")
+    public ResponseEntity<Project> analyzeExistingReport(@PathVariable String id, @PathVariable String reportId) {
+        return projectRepository.findById(id).map(project -> {
+            WeeklyReport target = null;
+            for (WeeklyReport r : project.getWeeklyReports()) {
+                if (r.getId().equals(reportId)) {
+                    target = r;
+                    break;
+                }
+            }
+            if (target != null) {
+                List<WeeklyReport> allReportsInDB = new ArrayList<>();
+                try {
+                    List<Project> allProjects = projectRepository.findAll();
+                    if (allProjects != null) {
+                        for (Project p : allProjects) {
+                            if (p.getWeeklyReports() != null) {
+                                allReportsInDB.addAll(p.getWeeklyReports());
+                            }
+                        }
+                    }
+                } catch (Exception e) {}
+                
+                aiService.analyzeReport(target, allReportsInDB);
+                Project updated = saveProjectAndSync(project);
+                return ResponseEntity.ok(updated);
+            }
+            return ResponseEntity.badRequest().<Project>build();
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    private Project saveProjectAndSync(Project project) {
+        Project saved = projectRepository.save(project);
+        syncTasksAndMilestones(saved);
+        return saved;
+    }
+
+    private void syncTasksAndMilestones(Project project) {
+        try {
+            if (project.getTasks() != null) {
+                java.util.Set<String> projectTaskIds = project.getTasks().stream()
+                        .map(Task::getId)
+                        .filter(java.util.Objects::nonNull)
+                        .collect(java.util.stream.Collectors.toSet());
+                taskRepository.findAll().stream()
+                        .filter(t -> project.getName().equals(t.getProjectName()) && !projectTaskIds.contains(t.getId()))
+                        .forEach(t -> taskRepository.deleteById(t.getId()));
+
+                for (Task t : project.getTasks()) {
+                    if (t.getId() == null || t.getId().isEmpty()) {
+                        t.setId(UUID.randomUUID().toString());
+                    }
+                    t.setProjectName(project.getName());
+                    taskRepository.save(t);
+                }
+            }
+            if (project.getMilestones() != null) {
+                java.util.Set<String> projectMilestoneIds = project.getMilestones().stream()
+                        .map(Milestone::getId)
+                        .filter(java.util.Objects::nonNull)
+                        .collect(java.util.stream.Collectors.toSet());
+                milestoneRepository.findAll().stream()
+                        .filter(m -> !projectMilestoneIds.contains(m.getId()))
+                        .forEach(m -> milestoneRepository.deleteById(m.getId()));
+
+                for (Milestone m : project.getMilestones()) {
+                    if (m.getId() == null || m.getId().isEmpty()) {
+                        m.setId(UUID.randomUUID().toString());
+                    }
+                    milestoneRepository.save(m);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error syncing tasks/milestones: " + e.getMessage());
+        }
     }
 }

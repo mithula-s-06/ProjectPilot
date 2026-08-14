@@ -4,6 +4,7 @@ import {
   FiBookOpen, FiAward, FiCheck, FiX, FiAlertCircle 
 } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
+import { api, addNotification } from '../utils/api';
 
 const Profile = () => {
   const { currentPage } = usePage();
@@ -11,27 +12,87 @@ const Profile = () => {
   // Unified Profile State (initialized from active login/signup session)
   const getInitialProfile = () => {
     const defaultData = {
-      name: currentPage === 'admin' ? 'Administrator' : 'Ankit Sharma',
-      email: currentPage === 'admin' ? 'admin@pp.edu' : 'ankit.s@pp.edu',
-      username: 'admin_001',
+      name: currentPage === 'admin' ? 'Administrator' : 'User',
+      email: currentPage === 'admin' ? 'admin@pp.edu' : '',
+      username: 'user_001',
       roleLabel: currentPage === 'admin' ? 'System Administrator' : (currentPage === 'team-leader' ? 'Team Leader' : 'Student'),
       department: 'Computer Science & Engineering',
-      college: 'ProjectPilot University',
-      team: 'Team Alpha',
-      projectsCount: 4
+      college: '',
+      team: 'Not Assigned',
+      projectsCount: 0,
+      projectsList: []
     };
 
     try {
       const storedUser = localStorage.getItem('currentUser');
       if (storedUser) {
         const user = JSON.parse(storedUser);
+        
+        // Find latest record from registeredUsers for the actual profile state!
+        const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+        const userRecord = registeredUsers.find(u => u.email.toLowerCase() === user.email.toLowerCase()) || user;
+
+        // Calculate dynamic properties
+        const allProjects = JSON.parse(localStorage.getItem('projects') || '[]');
+        const isMentor = userRecord.role === 'MENTOR' || userRecord.role === 'Mentor';
+        
+        let userTeamsString = userRecord.team || 'Not Assigned';
+        let matchedProjects = [];
+        
+        if (isMentor) {
+          // Mentor name matching
+          const mentorName = (userRecord.fullName || userRecord.name || '').toLowerCase().trim();
+          matchedProjects = allProjects.filter(p => {
+            const pMentor = (p.mentor || p.mentorName || '').toLowerCase().trim();
+            return pMentor === mentorName;
+          });
+          
+          // Teams are the teams associated with those mentor projects
+          const mentorTeams = matchedProjects
+            .map(p => p.teamName)
+            .filter(tName => tName && tName !== 'Not Assigned');
+          
+          // Remove duplicates
+          const uniqueMentorTeams = [...new Set(mentorTeams)];
+          userTeamsString = uniqueMentorTeams.length > 0 ? uniqueMentorTeams.join(', ') : 'Not Assigned';
+        } else {
+          // Student or Team Leader
+          const userTeams = userTeamsString && userTeamsString !== 'Not Assigned'
+            ? userTeamsString.split(',').map(t => t.trim().toLowerCase())
+            : [];
+            
+          matchedProjects = allProjects.filter(p => {
+            const pTeam = p.teamName ? p.teamName.toLowerCase().trim() : '';
+            return userTeams.includes(pTeam) ||
+                   (p.name && userTeams.some(t => p.name.toLowerCase().includes(t)));
+          });
+        }
+
+        // Resolve display role label (ensure it matches the format of role label)
+        let displayRole = 'Student';
+        if (userRecord.role) {
+          const rLower = userRecord.role.toLowerCase();
+          if (rLower === 'team_leader' || rLower === 'team leader') {
+            displayRole = 'Team Leader';
+          } else if (rLower === 'mentor') {
+            displayRole = 'Mentor';
+          } else if (rLower === 'admin' || rLower === 'system administrator') {
+            displayRole = 'System Administrator';
+          }
+        }
+
+        const resolvedCollege = userRecord.collegeName || userRecord.college || user.collegeName || user.college || '';
+
         return {
           ...defaultData,
-          name: user.fullName || defaultData.name,
-          email: user.email || defaultData.email,
-          roleLabel: user.role || defaultData.roleLabel,
-          college: user.collegeName || defaultData.college,
-          department: user.department || defaultData.department
+          name: userRecord.fullName || userRecord.name || defaultData.name,
+          email: userRecord.email || defaultData.email,
+          roleLabel: displayRole,
+          college: resolvedCollege,
+          department: userRecord.department || defaultData.department,
+          team: userTeamsString,
+          projectsCount: matchedProjects.length,
+          projectsList: matchedProjects.map(p => p.name)
         };
       }
     } catch (e) {
@@ -41,6 +102,119 @@ const Profile = () => {
   };
 
   const [profileData, setProfileData] = useState(getInitialProfile);
+
+  useEffect(() => {
+    function calculateProfile(fetchedUsers, allProjects) {
+      try {
+        const storedUser = localStorage.getItem('currentUser');
+        if (!storedUser) return;
+        const user = JSON.parse(storedUser);
+        const userEmail = (user.email || '').trim().toLowerCase();
+
+        const myUserRecord = (fetchedUsers || []).find(u => u && u.email && u.email.trim().toLowerCase() === userEmail);
+        if (myUserRecord) {
+          // Update local currentUser storage
+          const updatedUser = {
+            ...user,
+            fullName: myUserRecord.name || myUserRecord.fullName || user.fullName,
+            team: myUserRecord.team || 'Not Assigned',
+            collegeName: myUserRecord.collegeName || '',
+            department: myUserRecord.department || ''
+          };
+          localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+
+          // Compute assigned projects and stats
+          const isMentor = myUserRecord.role === 'MENTOR' || myUserRecord.role === 'Mentor' || myUserRecord.role === 'Mentor';
+          let userTeamsString = myUserRecord.team || 'Not Assigned';
+          let matchedProjects = [];
+
+          if (isMentor) {
+            const mentorName = (myUserRecord.name || myUserRecord.fullName || '').toLowerCase().trim();
+            matchedProjects = allProjects.filter(p => {
+              const pMentor = (p.mentor || p.mentorName || '').toLowerCase().trim();
+              return pMentor === mentorName;
+            });
+            const mentorTeams = matchedProjects
+              .map(p => p.teamName)
+              .filter(tName => tName && tName !== 'Not Assigned');
+            const uniqueTeams = [...new Set(mentorTeams)];
+            userTeamsString = uniqueTeams.length > 0 ? uniqueTeams.join(', ') : 'Not Assigned';
+          } else {
+            const userTeams = userTeamsString && userTeamsString !== 'Not Assigned'
+              ? userTeamsString.split(',').map(t => t.trim().toLowerCase())
+              : [];
+            matchedProjects = allProjects.filter(p => {
+              const pTeam = p.teamName ? p.teamName.toLowerCase().trim() : '';
+              return userTeams.includes(pTeam) ||
+                     (p.name && userTeams.some(t => p.name.toLowerCase().includes(t)));
+            });
+          }
+
+          let displayRole = 'Student';
+          if (myUserRecord.role) {
+            const rLower = myUserRecord.role.toLowerCase();
+            if (rLower === 'team_leader' || rLower === 'team leader') {
+              displayRole = 'Team Leader';
+            } else if (rLower === 'mentor') {
+              displayRole = 'Mentor';
+            } else if (rLower === 'admin' || rLower === 'system administrator') {
+              displayRole = 'System Administrator';
+            }
+          }
+
+          setProfileData({
+            name: myUserRecord.name || myUserRecord.fullName || user.fullName || user.name,
+            email: myUserRecord.email,
+            roleLabel: displayRole,
+            college: myUserRecord.collegeName || '',
+            department: myUserRecord.department || '',
+            team: userTeamsString,
+            projectsCount: matchedProjects.length,
+            projectsList: matchedProjects.map(p => p.name)
+          });
+        }
+      } catch (calcErr) {
+        console.warn('Calculation failed inside calculateProfile:', calcErr);
+      }
+    }
+
+    async function loadFreshProfile() {
+      // 1. Initial immediate offline sync from local storage cache
+      try {
+        const storedUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+        const storedProj = JSON.parse(localStorage.getItem('projects') || '[]');
+        if (storedUsers.length > 0) {
+          calculateProfile(storedUsers, storedProj);
+        }
+      } catch (err) {
+        console.warn('Offline profile calculations failed:', err);
+      }
+
+      // 2. Fetch fresh users and projects list from MongoDB
+      try {
+        const [fetchedUsers, allProjects] = await Promise.all([
+          api.listUsers() || [],
+          api.listProjects() || []
+        ]);
+
+        const mappedUsers = (fetchedUsers || []).map(u => ({
+          id: u.id,
+          fullName: u.name,
+          email: u.email,
+          role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+          collegeName: u.collegeName || '',
+          department: u.department || 'Computer Science & Engineering',
+          status: 'Active',
+          team: u.team || 'Not Assigned'
+        }));
+
+        calculateProfile(mappedUsers, allProjects);
+      } catch (err) {
+        console.warn('Failed to load fresh profile data from backend:', err);
+      }
+    }
+    loadFreshProfile();
+  }, []);
 
   // Edit / Password Mode: 'view' | 'edit' | 'password'
   const [viewMode, setViewMode] = useState('view');
@@ -81,7 +255,7 @@ const Profile = () => {
     setPasswordForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
 
     // Validations
@@ -96,9 +270,80 @@ const Profile = () => {
     }
 
     const updatedProfile = { ...editForm };
-    setProfileData(updatedProfile);
     
-    // Save to localStorage
+    // Save to backend database!
+    try {
+      const storedUser = localStorage.getItem('currentUser');
+      if (storedUser) {
+        const user = JSON.parse(storedUser);
+        const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+        const userRecordIndex = registeredUsers.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase());
+        
+        if (userRecordIndex !== -1) {
+          const userRecord = registeredUsers[userRecordIndex];
+          const dbId = userRecord.id || user.id;
+
+          // Map role string to backend enum
+          const roleLabelStr = userRecord.role || user.role || 'Student';
+          const backendRole = roleLabelStr === 'Team Leader' || roleLabelStr === 'TEAM_LEADER' ? 'TEAM_LEADER' :
+                              roleLabelStr === 'Mentor' || roleLabelStr === 'MENTOR' ? 'MENTOR' : 'STUDENT';
+
+          // Update backend profile
+          await api.updateUserProfile(dbId, {
+            name: updatedProfile.name,
+            email: updatedProfile.email,
+            role: backendRole,
+            department: updatedProfile.department,
+            team: userRecord.team || 'Not Assigned',
+            collegeName: updatedProfile.college
+          });
+
+          // Sync registeredUsers in localStorage
+          userRecord.fullName = updatedProfile.name;
+          userRecord.email = updatedProfile.email;
+          userRecord.collegeName = updatedProfile.college;
+          userRecord.department = updatedProfile.department;
+          localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
+
+          // Dispatch storage event to trigger real-time updates across pages
+          const storageEvent = new StorageEvent('storage', {
+            key: 'registeredUsers',
+            newValue: JSON.stringify(registeredUsers),
+            storageArea: localStorage
+          });
+          window.dispatchEvent(storageEvent);
+        }
+      }
+    } catch (dbErr) {
+      console.error("Failed to update user profile in backend database:", dbErr);
+      setFeedback({ type: 'error', message: 'Failed to update profile on backend database. Please try again.' });
+      return;
+    }
+
+    setProfileData(updatedProfile);
+
+    // Send profile update notification to user
+    const changedFields = [];
+    if (updatedProfile.name !== profileData.name) changedFields.push('name');
+    if (updatedProfile.email !== profileData.email) changedFields.push('email');
+    if (updatedProfile.college !== profileData.college) changedFields.push('college/university');
+    if (updatedProfile.department !== profileData.department) changedFields.push('department');
+
+    if (changedFields.length > 0) {
+      try {
+        await addNotification(
+          'Profile Updated',
+          `Your profile details (${changedFields.join(', ')}) have been successfully updated.`,
+          updatedProfile.email,
+          null,
+          'info'
+        );
+      } catch (notifErr) {
+        console.warn('Failed to send profile update notification:', notifErr);
+      }
+    }
+    
+    // Save to localStorage currentUser
     try {
       const storedUser = localStorage.getItem('currentUser');
       const currentUser = storedUser ? JSON.parse(storedUser) : {};
@@ -110,6 +355,13 @@ const Profile = () => {
         department: updatedProfile.department
       };
       localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+      
+      const storageEvent = new StorageEvent('storage', {
+        key: 'currentUser',
+        newValue: JSON.stringify(updatedUser),
+        storageArea: localStorage
+      });
+      window.dispatchEvent(storageEvent);
     } catch (err) {
       console.error("Failed to update localStorage currentUser", err);
     }
@@ -132,6 +384,22 @@ const Profile = () => {
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
       setFeedback({ type: 'error', message: 'Confirm password must match your new password.' });
       return;
+    }
+
+    // Send credentials change notification to user
+    try {
+      const email = profileData.email;
+      if (email) {
+        addNotification(
+          'Credentials Changed',
+          'Your password has been successfully updated.',
+          email,
+          null,
+          'warning'
+        );
+      }
+    } catch (notifErr) {
+      console.warn('Failed to send password update notification:', notifErr);
     }
 
     setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -239,9 +507,14 @@ const Profile = () => {
                     <span className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider block">
                       Projects Assigned
                     </span>
-                    <span className="text-xs font-semibold text-brand-text">
-                      {profileData.projectsCount} Active Projects
+                    <span className="text-xs font-semibold text-brand-text block">
+                      {profileData.projectsCount} Active Project{profileData.projectsCount === 1 ? '' : 's'}
                     </span>
+                    {profileData.projectsList && profileData.projectsList.length > 0 && (
+                      <span className="text-[10px] font-bold text-brand-text-muted block mt-1 select-none">
+                        Assigned: {profileData.projectsList.join(', ')}
+                      </span>
+                    )}
                   </div>
                 </div>
               </>

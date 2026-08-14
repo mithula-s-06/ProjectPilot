@@ -49,10 +49,10 @@ const Navbar = () => {
 
   return (
     <nav
-      className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${
+      className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 bg-[var(--bg-card)] border-b border-[var(--color-border)] ${
         isScrolled
-          ? 'py-4 glass-panel shadow-md border-b'
-          : 'py-6 bg-transparent border-b border-transparent'
+          ? 'py-4 shadow-md'
+          : 'py-6 shadow-sm'
       }`}
     >
       <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
@@ -151,7 +151,7 @@ const Navbar = () => {
 
       {/* Slide-Down Mobile Drawer Menu */}
       <div
-        className={`absolute top-full left-0 w-full glass-panel border-b shadow-2xl py-6 px-8 flex flex-col gap-4 md:hidden transition-all duration-300 ease-in-out origin-top transform ${
+        className={`absolute top-full left-0 w-full bg-[var(--bg-card)] border-b border-[var(--color-border)] shadow-2xl py-6 px-8 flex flex-col gap-4 md:hidden transition-all duration-300 ease-in-out origin-top transform ${
           mobileMenuOpen
             ? 'scale-y-100 opacity-100 visible'
             : 'scale-y-95 opacity-0 invisible pointer-events-none'

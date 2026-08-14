@@ -23,7 +23,6 @@ const MilestoneCard = ({ milestones = [] }) => {
             <h3 className="text-sm font-extrabold uppercase tracking-widest text-brand-text">
               Upcoming Milestones
             </h3>
-            <span className="text-xs text-brand-text-muted">Click to view vertical timeline</span>
           </div>
         </div>
 

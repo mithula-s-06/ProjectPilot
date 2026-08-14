@@ -1,12 +1,19 @@
-import React, { useState } from 'react';
-import { FiArrowLeft, FiCheck, FiX, FiFileText, FiRefreshCw } from 'react-icons/fi';
+import React, { useState, useEffect } from 'react';
+import { FiArrowLeft, FiCheck, FiX, FiFileText, FiRefreshCw, FiCpu } from 'react-icons/fi';
 import ReportViewer from '../components/ReportViewer';
 import FeedbackForm from '../components/FeedbackForm';
+import { api } from '../utils/api';
 
 const ReportReview = ({ report, onBack, onUpdateReportStatus, projects }) => {
+  const [localReport, setLocalReport] = useState(report);
+  const [analyzing, setAnalyzing] = useState(false);
   const [decision, setDecision] = useState(report.status === 'Reviewed' ? 'Approved' : report.status === 'Rejected' ? 'Rejected' : null);
   const [toast, setToast] = useState(null);
   const [feedback, setFeedback] = useState(report.feedback || '');
+
+  useEffect(() => {
+    setLocalReport(report);
+  }, [report]);
 
   if (!report) return null;
 
@@ -29,6 +36,35 @@ const ReportReview = ({ report, onBack, onUpdateReportStatus, projects }) => {
     }
     return false;
   })();
+
+  const handleReanalyze = async () => {
+    if (analyzing) return;
+    setAnalyzing(true);
+    try {
+      const updatedProject = await api.reanalyzeWeeklyReport(localReport.projectId, localReport.id);
+      if (updatedProject && updatedProject.weeklyReports) {
+        const updatedRep = updatedProject.weeklyReports.find(r => r.id === localReport.id);
+        if (updatedRep) {
+          setLocalReport(prev => ({
+            ...prev,
+            similarityScore: updatedRep.similarityScore || 0,
+            aiGeneratedScore: updatedRep.aiGeneratedScore || 0
+          }));
+          setToast("AI integrity audit completed successfully!");
+        } else {
+          setToast("Could not locate updated report in response.");
+        }
+      } else {
+        setToast("Audit completed but failed to parse results.");
+      }
+    } catch (err) {
+      console.error("Re-analysis failed:", err);
+      setToast("Failed to run AI audit. Make sure AI microservice is active.");
+    } finally {
+      setAnalyzing(false);
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
 
   const handleDecision = (status) => {
     setDecision(status);
@@ -85,6 +121,77 @@ const ReportReview = ({ report, onBack, onUpdateReportStatus, projects }) => {
         {/* Info & Actions (right) */}
         <div className="lg:col-span-5 space-y-6 w-full">
           
+          {/* AI Integrity Audit */}
+          <div className="p-6 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-md space-y-5">
+            <h3 className="text-sm font-extrabold uppercase tracking-widest text-brand-text pb-2.5 border-b border-brand-border/40 flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <FiCpu className="w-4 h-4 text-cyan-500" />
+                AI Integrity Audit
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleReanalyze}
+                  disabled={analyzing}
+                  title="Re-run AI Audit on this report"
+                  className={`p-1.5 rounded-lg border border-brand-border hover:border-cyan-500/30 text-brand-text-muted hover:text-cyan-500 bg-brand-card hover:bg-slate-200/30 dark:hover:bg-slate-800/30 transition-all ${analyzing ? 'animate-spin' : ''}`}
+                >
+                  <FiRefreshCw className="w-3.5 h-3.5" />
+                </button>
+                <span className={`text-[9px] px-2 py-0.5 rounded font-extrabold uppercase border ${
+                  ((localReport.similarityScore || 0) >= 30 || (localReport.aiGeneratedScore || 0) >= 70)
+                    ? 'bg-rose-500/10 text-rose-500 border-rose-500/20'
+                    : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                }`}>
+                  {((localReport.similarityScore || 0) >= 30 || (localReport.aiGeneratedScore || 0) >= 70) ? 'Flagged' : 'Clear'}
+                </span>
+              </div>
+            </h3>
+            
+            <div className="space-y-4">
+              {/* Semantic Similarity */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="font-extrabold text-brand-text-muted">Semantic Similarity</span>
+                  <span className={`font-bold ${(localReport.similarityScore || 0) >= 30 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                    {localReport.similarityScore || 0}%
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${(localReport.similarityScore || 0) >= 30 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                    style={{ width: `${Math.min(localReport.similarityScore || 0, 100)}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-brand-text-muted/70 leading-relaxed font-semibold">
+                  {(localReport.similarityScore || 0) >= 30 
+                    ? "⚠️ Matches other documents in the database. Potential plagiarism." 
+                    : "✓ Low similarity. Content appears unique."}
+                </p>
+              </div>
+
+              {/* AI Detection */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="font-extrabold text-brand-text-muted">AI-Generated Probability</span>
+                  <span className={`font-bold ${(localReport.aiGeneratedScore || 0) >= 70 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                    {localReport.aiGeneratedScore || 0}%
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${(localReport.aiGeneratedScore || 0) >= 70 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                    style={{ width: `${Math.min(localReport.aiGeneratedScore || 0, 100)}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-brand-text-muted/70 leading-relaxed font-semibold">
+                  {(localReport.aiGeneratedScore || 0) >= 70 
+                    ? "⚠️ High probability of AI-generated content (e.g. ChatGPT)." 
+                    : "✓ Text characteristics match natural human writing styles."}
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Decision Box */}
           <div className="p-6 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-md space-y-4">
             <h3 className="text-sm font-extrabold uppercase tracking-widest text-brand-text pb-2.5 border-b border-brand-border/40">

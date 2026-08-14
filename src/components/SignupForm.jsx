@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { FiUser, FiMail, FiLock, FiEye, FiEyeOff, FiChevronDown, FiAlertCircle, FiBookOpen, FiGrid, FiX } from 'react-icons/fi';
 import PasswordRequirements from './PasswordRequirements';
 import { usePage } from '../hooks/usePage';
-import { api } from '../utils/api';
+import { api, addNotification } from '../utils/api';
 
 const SignupForm = ({ showTerms, setShowTerms }) => {
   const { navigateTo } = usePage();
@@ -143,11 +143,20 @@ const SignupForm = ({ showTerms, setShowTerms }) => {
       try {
         const dept = formData.department === 'Other' ? formData.otherDepartment : formData.department;
         
-        // Register via the backend API
-        await api.register(formData.fullName, formData.email, formData.password, formData.role);
+        await api.register(formData.fullName, formData.email, formData.password, formData.role, dept, formData.collegeName);
 
-        // Auto-login to generate token session
-        await api.login(formData.email, formData.password);
+        // Send signup notification to admin
+        try {
+          await addNotification(
+            'New User Registration',
+            `A new user "${formData.fullName}" (${formData.email}) has registered as a "${formData.role}".`,
+            'admin@pp.edu',
+            null,
+            'info'
+          );
+        } catch (notifErr) {
+          console.warn('Failed to send admin signup notification:', notifErr);
+        }
 
         // Sync users list to local storage
         try {
@@ -157,7 +166,7 @@ const SignupForm = ({ showTerms, setShowTerms }) => {
             fullName: u.name,
             email: u.email,
             role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
-            collegeName: formData.collegeName,
+            collegeName: u.collegeName || formData.collegeName,
             department: u.department || dept,
             status: 'Active',
             team: u.team || 'Not Assigned'

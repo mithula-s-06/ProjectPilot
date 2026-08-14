@@ -1,15 +1,99 @@
+import React, { useState, useEffect } from 'react';
 import { FiArrowLeft, FiUser, FiLayers, FiUsers, FiGithub } from 'react-icons/fi';
+import { api } from '../utils/api';
 import HealthScoreCard from '../components/HealthScoreCard';
-import RiskLevelCard from '../components/RiskLevelCard';
 import TaskCard from '../components/TaskCard';
 import MilestoneCard from '../components/MilestoneCard';
 import WeeklyReportCard from '../components/WeeklyReportCard';
 import GithubContributionCard from '../components/GithubContributionCard';
 import MentorFeedbackCard from '../components/MentorFeedbackCard';
-import SuggestionHistoryCard from '../components/SuggestionHistoryCard';
 
 const ProjectDetails = ({ project, onBack, onNavigateToSubmitReport, onNavigateToEditReport, onSubmitWeeklyReport, onUpdateTasks }) => {
   if (!project) return null;
+
+  const [dynamicFeedback, setDynamicFeedback] = useState(project.mentorFeedback || { latestFeedback: 'No feedback submitted yet.', date: '--', allComments: [] });
+
+  const handleUpdateHealth = async (newHealth) => {
+    try {
+      const updatedProj = {
+        ...project,
+        health: newHealth
+      };
+      
+      if (updatedProj.healthDetails) {
+        const scores = [...(updatedProj.healthDetails.scores || [])];
+        if (scores.length > 0) {
+          scores[scores.length - 1] = newHealth;
+        } else {
+          scores.push(newHealth);
+        }
+        updatedProj.healthDetails = {
+          ...updatedProj.healthDetails,
+          scores: scores
+        };
+      }
+
+      await api.updateProject(project.id, updatedProj);
+      
+      const stored = localStorage.getItem('projects');
+      if (stored) {
+        const allProj = JSON.parse(stored);
+        const nextAllProj = allProj.map(p => p.id === project.id ? updatedProj : p);
+        localStorage.setItem('projects', JSON.stringify(nextAllProj));
+        window.dispatchEvent(new Event('storage'));
+      }
+      
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to update health score:', err);
+    }
+  };
+
+  useEffect(() => {
+    async function loadDynamicSuggestions() {
+      try {
+        const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        const userEmail = (currentUser.email || '').trim().toLowerCase();
+        const userRole = currentUser.role || '';
+        const isLeader = userRole === 'TEAM_LEADER' || userRole === 'Team Leader';
+
+        let list = [];
+        if (isLeader && project.teamName) {
+          list = await api.getSuggestionsByTeam(project.teamName) || [];
+        } else if (userEmail) {
+          list = await api.getSuggestionsByRecipient(userEmail) || [];
+        }
+
+        const suggestionComments = list.map(s => ({
+          id: s.id,
+          author: s.mentorName || 'Mentor',
+          date: s.date || '--',
+          text: `[Directive for ${s.recipientName || 'Member'}]: ${s.text}`
+        }));
+
+        const currentComments = project.mentorFeedback?.allComments || [];
+        const combined = [...suggestionComments, ...currentComments];
+        const uniqueComments = [];
+        const seenIds = new Set();
+        combined.forEach(c => {
+          if (c && c.id && !seenIds.has(c.id)) {
+            seenIds.add(c.id);
+            uniqueComments.push(c);
+          }
+        });
+
+        setDynamicFeedback({
+          latestFeedback: uniqueComments[0]?.text || project.mentorFeedback?.latestFeedback || 'No feedback submitted yet.',
+          date: uniqueComments[0]?.date || project.mentorFeedback?.date || '--',
+          allComments: uniqueComments
+        });
+
+      } catch (err) {
+        console.warn('Failed to load dynamic suggestions in project details:', err);
+      }
+    }
+    loadDynamicSuggestions();
+  }, [project]);
 
   const getTeamName = () => {
     if (project.teamName) return project.teamName;
@@ -72,19 +156,7 @@ const ProjectDetails = ({ project, onBack, onNavigateToSubmitReport, onNavigateT
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="space-y-2 pt-2 border-t border-brand-border/40">
-          <div className="flex items-center justify-between text-xs font-semibold text-brand-text-muted">
-            <span>Overall Development Completion</span>
-            <span className="text-brand-text">{project.progress}%</span>
-          </div>
-          <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all duration-700"
-              style={{ width: `${project.progress}%` }}
-            />
-          </div>
-        </div>
+
       </div>
 
       {/* 7 Expandable Panels Stack (Exact Requested Order) */}
@@ -116,13 +188,11 @@ const ProjectDetails = ({ project, onBack, onNavigateToSubmitReport, onNavigateT
         </div>
         
         {/* Section 1: Health Score */}
-        <HealthScoreCard health={project.health} healthDetails={project.healthDetails} />
+        <HealthScoreCard health={project.health} healthDetails={project.healthDetails} onUpdateHealth={handleUpdateHealth} />
 
-        {/* Section 2: Risk Level */}
-        <RiskLevelCard riskDetails={project.riskDetails} />
 
-        {/* Suggestion History of the Team */}
-        <SuggestionHistoryCard teamName={getTeamName()} />
+
+
 
         {/* Section 3: My Tasks */}
         <TaskCard 
@@ -167,7 +237,7 @@ const ProjectDetails = ({ project, onBack, onNavigateToSubmitReport, onNavigateT
         </div>
 
         {/* Section 7: Mentor Feedback */}
-        <MentorFeedbackCard mentorFeedback={project.mentorFeedback} />
+        <MentorFeedbackCard mentorFeedback={dynamicFeedback} />
 
       </div>
 

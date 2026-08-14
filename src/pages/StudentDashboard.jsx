@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FiX, FiArrowRight } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
-import { api } from '../utils/api';
+import { api, seedHistoricalNotifications, addNotification } from '../utils/api';
+import { checkDeadlineReminders } from '../utils/reminders';
 import StudentNavbar from '../components/StudentNavbar';
 import StudentSidebar from '../components/StudentSidebar';
 import ProjectCard from '../components/ProjectCard';
@@ -14,7 +15,6 @@ import Profile from './Profile';
 import NotificationsPage from './NotificationsPage';
 import SubmitReport from './SubmitReport';
 import TeamMembers from './TeamMembers';
-import ChatGuru from './ChatGuru';
 
 // Mock datasets
 // Clear mock data imports
@@ -84,8 +84,47 @@ const StudentDashboard = () => {
   const myProject = projects.find(p => p.teamName && activeTeamName && p.teamName.toLowerCase() === activeTeamName.toLowerCase()) || projects[0] || null;
 
   const [selectedProject, setSelectedProject] = useState(null);
+
+  const [memberMetrics, setMemberMetrics] = useState([]);
+
+  useEffect(() => {
+    async function loadMetrics() {
+      if (activeTeamName && activeTeamName !== 'Not Assigned') {
+        try {
+          const metrics = await api.getMemberMetricsByTeam(activeTeamName);
+          setMemberMetrics(metrics || []);
+        } catch (e) {
+          console.warn('Failed to load member metrics:', e);
+        }
+      }
+    }
+    loadMetrics();
+  }, [activeTeamName, projects]);
+
+  const resolvedActiveProject = React.useMemo(() => {
+    const proj = selectedProject || myProject;
+    if (!proj) return null;
+    
+    let totalCommits = 0;
+    let totalPRs = 0;
+    memberMetrics.forEach(m => {
+      totalCommits += m.commitsCount || 0;
+      totalPRs += m.prsCount || 0;
+    });
+    
+    return {
+      ...proj,
+      github: {
+        ...(proj.github || {}),
+        commits: totalCommits,
+        prs: totalPRs
+      }
+    };
+  }, [selectedProject, myProject, memberMetrics]);
+
   const [notifications, setNotifications] = useState(() => {
     try {
+      seedHistoricalNotifications();
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
       const email = currentUser.email?.toLowerCase();
       
@@ -96,11 +135,40 @@ const StudentDashboard = () => {
       
       if (stored) {
         const parsed = JSON.parse(stored);
-        return parsed.filter(n => 
-          !n.targetEmail || 
-          n.targetEmail.toLowerCase() === email ||
-          (n.targetTeam && myTeamName && n.targetTeam.toLowerCase() === myTeamName.toLowerCase())
-        );
+        return parsed.filter(n => {
+          const isTargetEmail = n.targetEmail && n.targetEmail.toLowerCase() === email;
+          const isTargetTeam = !n.targetEmail && n.targetTeam && myTeamName && myTeamName.split(',').map(t => t.trim().toLowerCase()).includes(n.targetTeam.toLowerCase().trim());
+          const isGeneral = !n.targetEmail && !n.targetTeam;
+          
+          if (!(isTargetEmail || isTargetTeam || isGeneral)) return false;
+
+          const title = (n.title || '').toLowerCase();
+          const message = (n.message || '').toLowerCase();
+          return (
+            title.includes('added') ||
+            message.includes('added as a team member') ||
+            title.includes('task assigned') ||
+            message.includes('assigned a task') ||
+            title.includes('milestone declared') ||
+            message.includes('milestone') ||
+            title.includes('approved') ||
+            title.includes('rejected') ||
+            title.includes('reassigned') ||
+            message.includes('approved') ||
+            message.includes('rejected') ||
+            title.includes('comment') ||
+            message.includes('comment') ||
+            title.includes('removed') ||
+            message.includes('removed from') ||
+            title.includes('profile updated') ||
+            title.includes('credentials changed') ||
+            message.includes('profile changed') ||
+            message.includes('data has been updated') ||
+            title.includes('mentor assigned') ||
+            message.includes('mentor has been assigned') ||
+            message.includes('academic mentor')
+          );
+        });
       } else {
         localStorage.setItem('notifications', JSON.stringify([]));
         return [];
@@ -113,6 +181,27 @@ const StudentDashboard = () => {
   const [submittingTask, setSubmittingTask] = useState(null);
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  const handleClearAllNotifications = async () => {
+    try {
+      for (const n of notifications) {
+        await api.deleteNotification(n.id);
+      }
+    } catch (err) {
+      console.warn('Failed to clear notifications on backend:', err);
+    }
+    try {
+      const stored = localStorage.getItem('notifications');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const remaining = parsed.filter(n => !notifications.some(vn => vn.id === n.id));
+        localStorage.setItem('notifications', JSON.stringify(remaining));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setNotifications([]);
+  };
 
   const saveProjectsToStorage = async (updatedProjectsList) => {
     try {
@@ -197,7 +286,7 @@ const StudentDashboard = () => {
           fullName: u.name,
           email: u.email,
           role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
-          collegeName: 'ProjectPilot University',
+          collegeName: u.collegeName || '',
           department: u.department || 'Computer Science & Engineering',
           status: 'Active',
           team: u.team || 'Not Assigned'
@@ -209,6 +298,8 @@ const StudentDashboard = () => {
         
         if (myUserRecord) {
           currentUser.team = myUserRecord.team || 'Not Assigned';
+          currentUser.collegeName = myUserRecord.collegeName || currentUser.collegeName || '';
+          currentUser.department = myUserRecord.department || currentUser.department || 'Computer Science & Engineering';
           localStorage.setItem('currentUser', JSON.stringify(currentUser));
 
           const myTeamName = myUserRecord.team;
@@ -230,7 +321,7 @@ const StudentDashboard = () => {
       }
     }
     syncData();
-  }, []);
+  }, [activeTeamName]);
 
   // LocalStorage mapping useEffect removed to consolidate in saveProjectsToStorage
 
@@ -243,10 +334,10 @@ const StudentDashboard = () => {
         }
       }
     }
-  }, [projects]);
+  }, [projects, selectedProject]);
 
   useEffect(() => {
-    const handleFocus = () => {
+    const handleFocus = async () => {
       try {
         const stored = localStorage.getItem('projects');
         const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
@@ -274,18 +365,61 @@ const StudentDashboard = () => {
           }
         }
         
-        const storedNotifs = localStorage.getItem('notifications');
-        if (storedNotifs && currentUser.email) {
-          const parsed = JSON.parse(storedNotifs);
+        let liveNotifs = [];
+        try {
+          liveNotifs = await api.listNotifications() || [];
+          localStorage.setItem('notifications', JSON.stringify(liveNotifs));
+        } catch (apiErr) {
+          console.warn('Failed to fetch notifications from backend inside student dashboard:', apiErr);
+          const storedNotifs = localStorage.getItem('notifications');
+          liveNotifs = storedNotifs ? JSON.parse(storedNotifs) : [];
+        }
+
+        if (currentUser.email) {
           const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
           const myUserRecord = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
           const myTeamName = myUserRecord ? myUserRecord.team : 'Not Assigned';
 
-          setNotifications(parsed.filter(n => 
-            !n.targetEmail || 
-            n.targetEmail.toLowerCase() === currentUser.email.toLowerCase() ||
-            (n.targetTeam && myTeamName && n.targetTeam.toLowerCase() === myTeamName.toLowerCase())
-          ));
+          setNotifications(liveNotifs.filter(n => {
+            const isTargetEmail = n.targetEmail && n.targetEmail.toLowerCase() === currentUser.email.toLowerCase();
+            const isTargetTeam = !n.targetEmail && n.targetTeam && myTeamName && myTeamName.split(',').map(t => t.trim().toLowerCase()).includes(n.targetTeam.toLowerCase().trim());
+            const isGeneral = !n.targetEmail && !n.targetTeam;
+            
+            if (!(isTargetEmail || isTargetTeam || isGeneral)) return false;
+
+            const title = (n.title || '').toLowerCase();
+            const message = (n.message || '').toLowerCase();
+            return (
+              title.includes('added') ||
+              message.includes('added as a team member') ||
+              title.includes('task assigned') ||
+              message.includes('assigned a task') ||
+              title.includes('milestone declared') ||
+              message.includes('milestone') ||
+              title.includes('approved') ||
+              title.includes('rejected') ||
+              title.includes('reassigned') ||
+              message.includes('approved') ||
+              message.includes('rejected') ||
+              title.includes('comment') ||
+              message.includes('comment') ||
+              title.includes('removed') ||
+              message.includes('removed from') ||
+              title.includes('profile updated') ||
+              title.includes('credentials changed') ||
+              message.includes('profile changed') ||
+              message.includes('data has been updated') ||
+              title.includes('mentor assigned') ||
+              message.includes('mentor has been assigned') ||
+              message.includes('academic mentor')
+            );
+          }));
+        }
+
+        // Trigger background deadline reminders check
+        if (stored) {
+          const allProj = JSON.parse(stored);
+          checkDeadlineReminders(allProj);
         }
       } catch (e) {
         console.error(e);
@@ -302,11 +436,41 @@ const StudentDashboard = () => {
         if (e.key === 'notifications' && e.newValue) {
           const parsed = JSON.parse(e.newValue);
           if (currentUser.email) {
-            setNotifications(parsed.filter(n => 
-              !n.targetEmail || 
-              n.targetEmail.toLowerCase() === currentUser.email.toLowerCase() ||
-              (n.targetTeam && myTeamName && n.targetTeam.toLowerCase() === myTeamName.toLowerCase())
-            ));
+            const email = currentUser.email.toLowerCase();
+            setNotifications(parsed.filter(n => {
+              const isTargetEmail = n.targetEmail && n.targetEmail.toLowerCase() === email;
+              const isTargetTeam = !n.targetEmail && n.targetTeam && myTeamName && myTeamName.split(',').map(t => t.trim().toLowerCase()).includes(n.targetTeam.toLowerCase().trim());
+              const isGeneral = !n.targetEmail && !n.targetTeam;
+              
+              if (!(isTargetEmail || isTargetTeam || isGeneral)) return false;
+
+              const title = (n.title || '').toLowerCase();
+              const message = (n.message || '').toLowerCase();
+              return (
+                title.includes('added') ||
+                message.includes('added as a team member') ||
+                title.includes('task assigned') ||
+                message.includes('assigned a task') ||
+                title.includes('milestone declared') ||
+                message.includes('milestone') ||
+                title.includes('approved') ||
+                title.includes('rejected') ||
+                title.includes('reassigned') ||
+                message.includes('approved') ||
+                message.includes('rejected') ||
+                title.includes('comment') ||
+                message.includes('comment') ||
+                title.includes('removed') ||
+                message.includes('removed from') ||
+                title.includes('profile updated') ||
+                title.includes('credentials changed') ||
+                message.includes('profile changed') ||
+                message.includes('data has been updated') ||
+                title.includes('mentor assigned') ||
+                message.includes('mentor has been assigned') ||
+                message.includes('academic mentor')
+              );
+            }));
           }
         }
 
@@ -376,9 +540,12 @@ const StudentDashboard = () => {
       submissionStatus: 'Submitted',
       submittedDate: new Date().toISOString().split('T')[0],
       remarks: reportData.description,
+      commitsCount: reportData.commitsCount || 0,
+      prsCount: reportData.prsCount || 0,
       fileName: reportData.fileName,
       fileSize: reportData.fileSize,
-      fileUrl: reportData.fileUrl || '#'
+      fileUrl: reportData.fileUrl || '#',
+      fileId: reportData.fileId || null
     };
     
     const updatedTasks = (project.tasks || []).map((t) => {
@@ -396,14 +563,110 @@ const StudentDashboard = () => {
       !updatedTasks.some(t => t.name === reportData.taskName && t.reportDetails && t.reportDetails.id === r.id)
     );
     
+    let overallCommits = 0;
+    let overallPRs = 0;
+    updatedTasks.forEach(t => {
+      if (t.reportDetails) {
+        overallCommits += parseInt(t.reportDetails.commitsCount || 0, 10);
+        overallPRs += parseInt(t.reportDetails.prsCount || 0, 10);
+      }
+    });
+
     const updatedProj = {
       ...project,
       tasks: updatedTasks,
+      commits: overallCommits,
+      prs: overallPRs,
+      github: {
+        ...(project.github || {}),
+        commits: overallCommits,
+        prs: overallPRs
+      },
       weeklyReports: [...cleanReports, newReport]
     };
 
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const studentName = currentUser.fullName || currentUser.name || '';
+    const studentEmail = currentUser.email || '';
+    
+    let memberCommits = 0;
+    let memberPRs = 0;
+    updatedTasks.forEach(t => {
+      if (t.student && t.student.toLowerCase() === studentName.toLowerCase()) {
+        if (t.reportDetails) {
+          memberCommits += parseInt(t.reportDetails.commitsCount || 0, 10);
+          memberPRs += parseInt(t.reportDetails.prsCount || 0, 10);
+        }
+      }
+    });
+
+    try {
+      await api.saveOrUpdateMemberMetric({
+        memberName: studentName,
+        memberEmail: studentEmail,
+        teamName: project.teamName,
+        commitsCount: memberCommits,
+        prsCount: memberPRs
+      });
+    } catch (metricErr) {
+      console.warn('Failed to save individual member metrics:', metricErr);
+    }
+
     try {
       const updated = await api.updateProject(projectId, updatedProj);
+
+      // Send task uploaded notification to team leader
+      try {
+        const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+        const isUserInTeam = (user, tName) => {
+          if (!user || !user.team || !tName) return false;
+          return user.team.split(',').map(t => t.trim().toLowerCase()).includes(tName.toLowerCase());
+        };
+        const teamLeader = registeredUsers.find(u => 
+          (u.role === 'Team Leader' || u.role === 'TEAM_LEADER') && 
+          isUserInTeam(u, project.teamName)
+        );
+        if (teamLeader) {
+          const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+          const studentName = currentUser.fullName || currentUser.name || 'A team member';
+          await addNotification(
+            'Task Report Uploaded',
+            `Team member "${studentName}" uploaded a report for task "${reportData.taskName}" under project "${project.name}".`,
+            teamLeader.email,
+            project.teamName,
+            'info'
+          );
+        }
+      } catch (notifErr) {
+        console.warn('Failed to send task uploaded notification to team leader:', notifErr);
+      }
+
+      // Send task uploaded notification to mentor
+      try {
+        const mentorName = project.mentor;
+        if (mentorName && mentorName !== 'Not Assigned') {
+          const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+          const mentorUser = registeredUsers.find(u => 
+            (u.role === 'Mentor' || u.role === 'MENTOR') && 
+            (u.fullName?.trim().toLowerCase() === mentorName.trim().toLowerCase() || u.name?.trim().toLowerCase() === mentorName.trim().toLowerCase())
+          );
+          const mentorEmail = mentorUser ? mentorUser.email : null;
+          if (mentorEmail) {
+            const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+            const studentName = currentUser.fullName || currentUser.name || 'A team member';
+            await addNotification(
+              'New Report Uploaded',
+              `Team member "${studentName}" uploaded a report for task "${reportData.taskName}" under project "${project.name}".`,
+              mentorEmail,
+              project.teamName,
+              'info'
+            );
+          }
+        }
+      } catch (notifErr) {
+        console.warn('Failed to send task uploaded notification to mentor:', notifErr);
+      }
+
       setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
       if (selectedProject && selectedProject.id === updated.id) {
         setSelectedProject(updated);
@@ -420,13 +683,13 @@ const StudentDashboard = () => {
 
     const newReport = {
       id: `rep-${Date.now()}`,
-      week: reportData.weekNumber || 'Week 1',
+      week: reportData.week || reportData.weekNumber || 'Week 1',
       remarks: reportData.remarks || 'No remarks provided.',
       submissionStatus: 'Submitted',
       submittedDate: new Date().toISOString().split('T')[0],
       fileName: reportData.fileName,
       fileSize: reportData.fileSize,
-      fileUrl: '#'
+      fileUrl: reportData.fileUrl || '#'
     };
 
     const updatedProj = {
@@ -436,6 +699,33 @@ const StudentDashboard = () => {
 
     try {
       const updated = await api.updateProject(projectId, updatedProj);
+
+      // Send weekly report uploaded notification to mentor
+      try {
+        const mentorName = project.mentor;
+        if (mentorName && mentorName !== 'Not Assigned') {
+          const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+          const mentorUser = registeredUsers.find(u => 
+            (u.role === 'Mentor' || u.role === 'MENTOR') && 
+            (u.fullName?.trim().toLowerCase() === mentorName.trim().toLowerCase() || u.name?.trim().toLowerCase() === mentorName.trim().toLowerCase())
+          );
+          const mentorEmail = mentorUser ? mentorUser.email : null;
+          if (mentorEmail) {
+            const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+            const studentName = currentUser.fullName || currentUser.name || 'A team member';
+            await addNotification(
+              'New Report Uploaded',
+              `Team member "${studentName}" uploaded a weekly report for "${reportData.weekNumber || 'Week'}" under project "${project.name}".`,
+              mentorEmail,
+              project.teamName,
+              'info'
+            );
+          }
+        }
+      } catch (notifErr) {
+        console.warn('Failed to send weekly report uploaded notification to mentor:', notifErr);
+      }
+
       setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
       if (selectedProject && selectedProject.id === updated.id) {
         setSelectedProject(updated);
@@ -449,10 +739,53 @@ const StudentDashboard = () => {
     const project = projects.find(p => p.id === projectId);
     if (!project) return;
 
+    let overallCommits = 0;
+    let overallPRs = 0;
+    updatedTasks.forEach(t => {
+      if (t.reportDetails) {
+        overallCommits += parseInt(t.reportDetails.commitsCount || 0, 10);
+        overallPRs += parseInt(t.reportDetails.prsCount || 0, 10);
+      }
+    });
+
     const updatedProj = {
       ...project,
-      tasks: updatedTasks
+      tasks: updatedTasks,
+      commits: overallCommits,
+      prs: overallPRs,
+      github: {
+        ...(project.github || {}),
+        commits: overallCommits,
+        prs: overallPRs
+      }
     };
+
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const studentName = currentUser.fullName || currentUser.name || '';
+    const studentEmail = currentUser.email || '';
+    
+    let memberCommits = 0;
+    let memberPRs = 0;
+    updatedTasks.forEach(t => {
+      if (t.student && t.student.toLowerCase() === studentName.toLowerCase()) {
+        if (t.reportDetails) {
+          memberCommits += parseInt(t.reportDetails.commitsCount || 0, 10);
+          memberPRs += parseInt(t.reportDetails.prsCount || 0, 10);
+        }
+      }
+    });
+
+    try {
+      await api.saveOrUpdateMemberMetric({
+        memberName: studentName,
+        memberEmail: studentEmail,
+        teamName: project.teamName,
+        commitsCount: memberCommits,
+        prsCount: memberPRs
+      });
+    } catch (metricErr) {
+      console.warn('Failed to save individual member metrics:', metricErr);
+    }
 
     try {
       const updated = await api.updateProject(projectId, updatedProj);
@@ -551,7 +884,7 @@ const StudentDashboard = () => {
       case 'projects':
         return <Projects projects={projects} onViewProject={handleViewProject} />;
       case 'project-details':
-        const activeProj = selectedProject || myProject;
+        const activeProj = resolvedActiveProject;
         return (
           <ProjectDetails 
             project={activeProj} 
@@ -570,7 +903,7 @@ const StudentDashboard = () => {
           />
         );
       case 'submit-report':
-        const submitProj = selectedProject || myProject;
+        const submitProj = resolvedActiveProject;
         return (
           <SubmitReport 
             task={submittingTask}
@@ -580,15 +913,18 @@ const StudentDashboard = () => {
                 taskName: submittingTask.name,
                 title: reportData.title,
                 description: reportData.description,
+                commitsCount: reportData.commitsCount,
+                prsCount: reportData.prsCount,
                 fileName: reportData.fileName,
                 fileSize: reportData.fileSize,
-                fileUrl: reportData.fileUrl
+                fileUrl: reportData.fileUrl,
+                fileId: reportData.fileId
               });
             }}
           />
         );
       case 'edit-report':
-        const editProj = selectedProject || myProject;
+        const editProj = resolvedActiveProject;
         return (
           <SubmitReport 
             task={submittingTask}
@@ -596,8 +932,12 @@ const StudentDashboard = () => {
             initialData={{
               title: submittingTask?.reportDetails?.week || '',
               description: submittingTask?.reportDetails?.remarks || '',
+              commitsCount: submittingTask?.reportDetails?.commitsCount || 0,
+              prsCount: submittingTask?.reportDetails?.prsCount || 0,
               fileName: submittingTask?.reportDetails?.fileName || '',
-              fileSize: submittingTask?.reportDetails?.fileSize || ''
+              fileSize: submittingTask?.reportDetails?.fileSize || '',
+              fileUrl: submittingTask?.reportDetails?.fileUrl || '#',
+              fileId: submittingTask?.reportDetails?.fileId || null
             }}
             onBack={() => setActiveTab('project-details')}
             onSubmit={(reportData) => {
@@ -609,8 +949,12 @@ const StudentDashboard = () => {
                       ...t.reportDetails,
                       week: reportData.title,
                       remarks: reportData.description,
+                      commitsCount: reportData.commitsCount,
+                      prsCount: reportData.prsCount,
                       fileName: reportData.fileName || t.reportDetails.fileName,
                       fileSize: reportData.fileSize || t.reportDetails.fileSize,
+                      fileUrl: reportData.fileUrl || t.reportDetails.fileUrl || '#',
+                      fileId: reportData.fileId || t.reportDetails.fileId || null,
                       submittedDate: new Date().toISOString().split('T')[0]
                     }
                   };
@@ -626,14 +970,12 @@ const StudentDashboard = () => {
         return (
           <NotificationsPage 
             notifications={notifications} 
-            onClearAll={() => setNotifications([])} 
+            onClearAll={handleClearAllNotifications} 
             onBack={() => setActiveTab('dashboard')} 
           />
         );
       case 'members':
         return <TeamMembers readOnly={true} projects={projects} />;
-      case 'chat-guru':
-        return <ChatGuru />;
       case 'settings':
         return <Settings />;
       case 'profile':
@@ -701,7 +1043,6 @@ const StudentDashboard = () => {
                     { id: 'dashboard', label: 'Dashboard' },
                     { id: 'projects', label: 'Projects' },
                     { id: 'members', label: 'Team Members' },
-                    { id: 'chat-guru', label: 'Chat Guru' },
                     { id: 'settings', label: 'Settings' },
                     { id: 'profile', label: 'Profile' },
                   ].map((tab) => (

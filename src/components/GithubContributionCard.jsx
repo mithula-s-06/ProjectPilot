@@ -146,7 +146,6 @@ const GithubContributionCard = ({ github = {} }) => {
             <h3 className="text-sm font-extrabold uppercase tracking-widest text-brand-text">
               GitHub Contribution
             </h3>
-            <span className="text-xs text-brand-text-muted">Click to view commit activity map</span>
           </div>
         </div>
 
@@ -156,9 +155,7 @@ const GithubContributionCard = ({ github = {} }) => {
             <span className="text-base font-extrabold text-brand-text block">
               {commits} Commits
             </span>
-            <span className="text-[10px] text-brand-text-muted font-bold block">
-              {contributionPercentage}% Workshare
-            </span>
+
           </div>
           <div className="text-brand-text-muted">
             {expanded ? <FiChevronUp className="w-5 h-5" /> : <FiChevronDown className="w-5 h-5" />}
@@ -171,7 +168,7 @@ const GithubContributionCard = ({ github = {} }) => {
         <div className="px-6 pb-6 pt-2 border-t border-brand-border/40 space-y-5 animate-fade-in text-left">
           
           {/* Key Metrics grid */}
-          <div className="grid grid-cols-3 gap-3 pt-2">
+          <div className="grid grid-cols-2 gap-3 pt-2">
             
             <div className="p-3 rounded-xl border border-brand-border bg-slate-50/20 dark:bg-slate-900/10 text-center flex flex-col items-center justify-center">
               <FiGitCommit className="w-5 h-5 text-primary mb-1" />
@@ -193,36 +190,9 @@ const GithubContributionCard = ({ github = {} }) => {
               </span>
             </div>
 
-            <div className="p-3 rounded-xl border border-brand-border bg-slate-50/20 dark:bg-slate-900/10 text-center flex flex-col items-center justify-center">
-              <FiCheckCircle className="w-5 h-5 text-emerald-400 mb-1" />
-              <span className="text-[8px] font-bold text-brand-text-muted uppercase tracking-wider block">
-                Issues Solved
-              </span>
-              <span className="text-sm font-extrabold text-brand-text mt-0.5">
-                {issues}
-              </span>
-            </div>
-
           </div>
 
-          {/* Heatmap Section */}
-          <div className="space-y-3.5 pt-1">
-            <div className="flex items-center justify-between text-xs font-bold text-brand-text-muted">
-              <span>Contribution Heatmap</span>
-              <span className="text-[9px] font-medium flex items-center gap-1 select-none">
-                Less <span className="w-2.5 h-2.5 bg-slate-200 dark:bg-[#161b22] rounded-sm" />
-                <span className="w-2.5 h-2.5 bg-emerald-500/25 dark:bg-[#0e4429] rounded-sm" />
-                <span className="w-2.5 h-2.5 bg-emerald-500/50 dark:bg-[#006d32] rounded-sm" />
-                <span className="w-2.5 h-2.5 bg-emerald-400 dark:bg-[#26a641] rounded-sm" />
-                <span className="w-2.5 h-2.5 bg-emerald-300 dark:bg-[#39d353] rounded-sm" /> More
-              </span>
-            </div>
-            
-            {/* Heatmap Grid Wrapper (GitHub dark background) */}
-            <div className="p-4 rounded-xl border border-brand-border bg-slate-50/30 dark:bg-[#0d1117] overflow-hidden">
-              {renderHeatmap()}
-            </div>
-          </div>
+
 
         </div>
       )}

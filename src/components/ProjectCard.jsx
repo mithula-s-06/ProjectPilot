@@ -1,5 +1,5 @@
 import React from 'react';
-import { FiUser, FiActivity, FiEdit, FiTrash2 } from 'react-icons/fi';
+import { FiUser, FiActivity, FiEdit, FiTrash2, FiUsers } from 'react-icons/fi';
 
 const ProjectCard = ({ project, onViewDetails, onEdit, onDelete }) => {
   if (!project) return null;
@@ -53,6 +53,12 @@ const ProjectCard = ({ project, onViewDetails, onEdit, onDelete }) => {
           <span>Mentor: <strong className="text-brand-text">{!project.mentor ? 'Not Assigned' : project.mentor}</strong></span>
         </div>
 
+        {/* Team Row */}
+        <div className="flex items-center gap-2 text-xs text-brand-text-muted font-medium">
+          <FiUsers className="w-3.5 h-3.5 text-indigo-500" />
+          <span>Team Name: <strong className="text-brand-text">{project.teamName || 'Not Assigned'}</strong></span>
+        </div>
+
         {/* Health Index Row */}
         <div className="flex items-center gap-2 text-xs text-brand-text-muted font-medium">
           <FiActivity className="w-3.5 h-3.5 text-secondary" />
@@ -62,19 +68,7 @@ const ProjectCard = ({ project, onViewDetails, onEdit, onDelete }) => {
           </span>
         </div>
 
-        {/* Progress Bar */}
-        <div className="space-y-1.5 pt-1">
-          <div className="flex items-center justify-between text-xs font-semibold text-brand-text-muted">
-            <span>Overall Progress</span>
-            <span className="text-brand-text">{project.progress || 0}%</span>
-          </div>
-          <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all duration-500" 
-              style={{ width: `${project.progress || 0}%` }}
-            />
-          </div>
-        </div>
+
       </div>
 
       {/* Button Row */}

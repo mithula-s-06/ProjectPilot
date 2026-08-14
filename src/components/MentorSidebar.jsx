@@ -1,7 +1,6 @@
 import { 
-  FiHome, FiUsers, FiFileText, FiAlertTriangle, 
-  FiSettings, FiUser, FiLogOut, FiChevronLeft, FiChevronRight,
-  FiCpu
+  FiHome, FiUsers, FiFileText, FiEdit3, 
+  FiSettings, FiUser, FiLogOut, FiChevronLeft, FiChevronRight
 } from 'react-icons/fi';
 
 const MentorSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLogout }) => {
@@ -9,8 +8,7 @@ const MentorSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLog
     { id: 'dashboard', label: 'Dashboard', icon: <FiHome className="w-5 h-5" /> },
     { id: 'active-teams', label: 'Active Teams', icon: <FiUsers className="w-5 h-5" /> },
     { id: 'reports', label: 'Reports', icon: <FiFileText className="w-5 h-5" /> },
-    { id: 'risk-teams', label: 'Risk Teams', icon: <FiAlertTriangle className="w-5 h-5" /> },
-    { id: 'chat-guru', label: 'Chat Guru', icon: <FiCpu className="w-5 h-5 text-indigo-500" /> },
+    { id: 'suggestions', label: 'Suggestions', icon: <FiEdit3 className="w-5 h-5" /> },
   ];
 
   const bottomMenuItems = [
@@ -22,8 +20,7 @@ const MentorSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLog
     const isActive = 
       activeTab === item.id || 
       (item.id === 'active-teams' && activeTab === 'team-details') ||
-      (item.id === 'reports' && activeTab === 'report-review') ||
-      (item.id === 'risk-teams' && activeTab === 'risk-team-details');
+      (item.id === 'reports' && activeTab === 'report-review');
 
     return (
       <button
@@ -54,13 +51,13 @@ const MentorSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLog
       }`}
     >
       {/* Top Menu List */}
-      <div className="space-y-2">
+      <div className="space-y-2 pt-1">
         {mainMenuItems.map(renderMenuItem)}
       </div>
 
       {/* Bottom Menu List */}
-      <div className="space-y-6">
-        <div className="space-y-2">
+      <div className="space-y-4 pb-8 flex-shrink-0">
+        <div className="space-y-2 border-t border-brand-border/40 pt-4">
           {bottomMenuItems.map(renderMenuItem)}
           
           {/* Logout */}
@@ -76,16 +73,6 @@ const MentorSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLog
                 Logout
               </span>
             )}
-          </button>
-        </div>
-
-        {/* Expand/Collapse sidebar trigger */}
-        <div className="border-t border-brand-border pt-4 flex justify-end">
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="p-1.5 rounded-lg border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors duration-300 focus:outline-none cursor-pointer"
-          >
-            {collapsed ? <FiChevronRight className="w-4 h-4" /> : <FiChevronLeft className="w-4 h-4" />}
           </button>
         </div>
       </div>

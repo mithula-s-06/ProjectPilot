@@ -28,7 +28,9 @@ const Reports = ({ onReviewReport }) => {
                 remarks: r.remarks,
                 fileName: r.fileName,
                 fileSize: r.fileSize,
-                fileUrl: r.fileUrl
+                fileUrl: r.fileUrl,
+                similarityScore: r.similarityScore || 0,
+                aiGeneratedScore: r.aiGeneratedScore || 0
               });
             });
           }
@@ -66,7 +68,9 @@ const Reports = ({ onReviewReport }) => {
                   remarks: r.remarks,
                   fileName: r.fileName,
                   fileSize: r.fileSize,
-                  fileUrl: r.fileUrl
+                  fileUrl: r.fileUrl,
+                  similarityScore: r.similarityScore || 0,
+                  aiGeneratedScore: r.aiGeneratedScore || 0
                 });
               });
             }

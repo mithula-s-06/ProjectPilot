@@ -1,8 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiX, FiCheck, FiFileText, FiCalendar, FiClock, FiUploadCloud, FiTrash2 } from 'react-icons/fi';
+import { FiPlus, FiX, FiCheck, FiFileText, FiUploadCloud, FiTrash2 } from 'react-icons/fi';
+import { api, addNotification } from '../utils/api';
+import { fileStorage } from '../utils/fileStorage';
+import ConfirmModal from '../components/ConfirmModal';
 
-const WeeklyReports = ({ project, teamName, onSubmitReport }) => {
+const WeeklyReports = ({ project, projects = [], _teamName, onSubmitReport }) => {
   const [modalOpen, setModalOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [confirmModalState, setConfirmModalState] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    variant: 'primary',
+    onConfirm: () => {},
+  });
   const [reports, setReports] = useState(() => {
     if (project && project.weeklyReports && project.weeklyReports.length > 0) {
       return project.weeklyReports.map((r, idx) => ({
@@ -41,10 +54,18 @@ const WeeklyReports = ({ project, teamName, onSubmitReport }) => {
 
   const [formData, setFormData] = useState({
     weekNumber: '',
-    project: project ? project.name : 'My Project',
+    project: project ? project.name : (projects && projects[0] ? projects[0].name : 'My Project'),
     title: '',
     remarks: ''
   });
+
+  useEffect(() => {
+    if (project) {
+      setFormData(prev => ({ ...prev, project: project.name }));
+    } else if (projects && projects.length > 0) {
+      setFormData(prev => ({ ...prev, project: projects[0].name }));
+    }
+  }, [project, projects]);
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
@@ -60,15 +81,15 @@ const WeeklyReports = ({ project, teamName, onSubmitReport }) => {
     if (toast && toast.type === 'error') setToast(null);
   };
 
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
 
   const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
   const isTeamLeader = currentUser.role === 'Team Leader';
 
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setSelectedFile(file);
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+      setSelectedFiles(prev => [...prev, ...files]);
     }
   };
 
@@ -78,17 +99,17 @@ const WeeklyReports = ({ project, teamName, onSubmitReport }) => {
 
   const handleDrop = (e) => {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      setSelectedFile(file);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      setSelectedFiles(prev => [...prev, ...files]);
     }
   };
 
-  const handleRemoveFile = () => {
-    setSelectedFile(null);
+  const handleRemoveFile = (indexToRemove) => {
+    setSelectedFiles(prev => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.weekNumber.trim()) {
       showToast('Week Number is required.', 'error');
@@ -98,34 +119,188 @@ const WeeklyReports = ({ project, teamName, onSubmitReport }) => {
       showToast('Report Title is required.', 'error');
       return;
     }
-    if (!selectedFile) {
-      showToast('Please upload a report document.', 'error');
+    if (selectedFiles.length === 0) {
+      showToast('Please upload at least one report document.', 'error');
       return;
     }
 
-    const newReport = {
-      id: `rep-${Date.now()}`,
-      week: formData.weekNumber,
-      title: formData.title,
-      remarks: formData.remarks || 'Weekly progress report',
-      submissionStatus: 'Submitted',
-      submittedDate: new Date().toISOString().split('T')[0],
-      fileName: selectedFile.name,
-      fileSize: `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB`,
-      fileUrl: '#',
-      feedback: 'Awaiting feedback.'
-    };
+    try {
+      setUploading(true);
 
-    if (onSubmitReport && project) {
-      onSubmitReport(project.id, newReport);
-    } else {
-      setReports(prev => [newReport, ...prev]);
+      const uploadedFiles = await Promise.all(selectedFiles.map(async (file) => {
+        if (file instanceof File) {
+          try {
+            const res = await api.uploadFile(file);
+            await fileStorage.saveFile(res.id, file);
+            return {
+              fileName: file.name,
+              fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+              fileUrl: res.fileUrl,
+              fileId: res.id
+            };
+          } catch (uploadErr) {
+            console.warn('Backend upload failed for file:', file.name, uploadErr);
+            const localId = `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            await fileStorage.saveFile(localId, file);
+            return {
+              fileName: file.name,
+              fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+              fileUrl: `local-file:${localId}`,
+              fileId: localId
+            };
+          }
+        }
+        return file;
+      }));
+
+      setConfirmModalState({
+        isOpen: true,
+        title: 'Submit Weekly Report?',
+        message: `Do you want to submit "${formData.title}" for ${formData.weekNumber}?`,
+        confirmText: 'Submit Report',
+        cancelText: 'Cancel',
+        variant: 'primary',
+        onConfirm: () => {
+          setConfirmModalState(prev => ({ ...prev, isOpen: false }));
+          const newReport = {
+            id: `rep-${Date.now()}`,
+            week: formData.weekNumber,
+            title: formData.title,
+            remarks: formData.remarks || 'Weekly progress report',
+            submissionStatus: 'Submitted',
+            submittedDate: new Date().toISOString().split('T')[0],
+            fileName: uploadedFiles[0]?.fileName || '',
+            fileSize: uploadedFiles[0]?.fileSize || '',
+            fileUrl: uploadedFiles[0]?.fileUrl || '#',
+            fileId: uploadedFiles[0]?.fileId || null,
+            files: uploadedFiles,
+            feedback: 'Awaiting feedback.'
+          };
+
+          const targetProject = (projects || []).find(p => p.name === formData.project) || project;
+          const targetProjectId = targetProject ? targetProject.id : (project ? project.id : null);
+
+          if (onSubmitReport && targetProjectId) {
+            onSubmitReport(targetProjectId, newReport);
+          } else {
+            setReports(prev => [newReport, ...prev]);
+          }
+
+          // Send notification to Mentor & Team
+          try {
+            const targetTeamName = targetProject ? targetProject.teamName : _teamName;
+            const mentorName = targetProject ? targetProject.mentor : null;
+            if (mentorName && mentorName !== 'Not Assigned') {
+              const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+              const mentorUser = registeredUsers.find(u => 
+                (u.role === 'Mentor' || u.role === 'MENTOR') && 
+                (u.fullName?.trim().toLowerCase() === mentorName.trim().toLowerCase() || u.name?.trim().toLowerCase() === mentorName.trim().toLowerCase())
+              );
+              if (mentorUser && mentorUser.email) {
+                addNotification(
+                  'New Report Uploaded',
+                  `Team "${targetTeamName}" uploaded a weekly report "${formData.title}" for ${formData.weekNumber}.`,
+                  mentorUser.email,
+                  targetTeamName,
+                  'info'
+                );
+              }
+            }
+            if (targetTeamName) {
+              addNotification(
+                'Weekly Report Submitted',
+                `Weekly report "${formData.title}" for ${formData.weekNumber} has been submitted for mentor review.`,
+                null,
+                targetTeamName,
+                'info'
+              );
+            }
+          } catch (notifErr) {
+            console.warn('Failed to dispatch weekly report notification:', notifErr);
+          }
+
+          showToast('Report submitted successfully!', 'success');
+          setModalOpen(false);
+          setSelectedFiles([]);
+          setFormData({ weekNumber: '', project: project ? project.name : 'My Project', title: '', remarks: '' });
+        }
+      });
+    } catch (uploadErr) {
+      console.error('Weekly report file upload failed:', uploadErr);
+      showToast('Failed to upload the file to the server. Please try again.', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownload = async (report) => {
+    const titleText = report.week || report.title || 'Weekly Report';
+    const fileName = report.fileName || 'report.pdf';
+    showToast(`Downloading Report: ${titleText} - File: ${fileName}`, 'success');
+
+    const fileUrl = report.fileUrl;
+    const fileId = report.fileId;
+
+    if (fileId || (fileUrl && fileUrl.startsWith('http'))) {
+      try {
+        const blob = await api.downloadFile(fileId || fileUrl);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return;
+      } catch (err) {
+        console.error('Failed to download file from backend:', err);
+      }
     }
 
-    showToast('Report submitted successfully!', 'success');
-    setModalOpen(false);
-    setSelectedFile(null);
-    setFormData({ weekNumber: '', project: project ? project.name : 'My Project', title: '', remarks: '' });
+    if (fileUrl && fileUrl.startsWith('data:')) {
+      try {
+        const parts = fileUrl.split(';base64,');
+        const contentType = parts[0].split(':')[1];
+        const raw = window.atob(parts[1]);
+        const rawLength = raw.length;
+        const uInt8Array = new Uint8Array(rawLength);
+        
+        for (let i = 0; i < rawLength; ++i) {
+          uInt8Array[i] = raw.charCodeAt(i);
+        }
+        
+        const blob = new Blob([uInt8Array], { type: contentType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return;
+      } catch (err) {
+        console.error('Failed to decode base64 file:', err);
+      }
+    }
+
+    let blob;
+    if (fileName.toLowerCase().endsWith('.pdf')) {
+      const pdfString = `%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n5 0 obj\n<< /Length 150 >>\nstream\nBT\n/F1 16 Tf\n50 750 Td\n(ProjectPilot - Mock Document) Tj\n/F1 12 Tf\n0 -40 Td\n(File: ${fileName}) Tj\n0 -20 Td\n(Subject: ${titleText}) Tj\nET\nendstream\nendobj\nxref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000244 00000 n \n0000000313 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n514\n%%EOF`;
+      blob = new Blob([pdfString], { type: 'application/pdf' });
+    } else {
+      const content = `ProjectPilot Weekly Report Document\n\nFile Name: ${fileName}\nReport Subject: ${titleText}\nRemarks: ${report.remarks || 'No remarks provided.'}\n\nThis is a plain page document generated for the weekly report.\n\nCreated on: ${new Date().toLocaleDateString()}`;
+      blob = new Blob([content], { type: 'text/plain' });
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -192,30 +367,43 @@ const WeeklyReports = ({ project, teamName, onSubmitReport }) => {
                 </div>
               </div>
 
-              {/* Document Link */}
-              <div className="flex items-center justify-between p-3 rounded-xl border border-brand-border bg-slate-50/10 dark:bg-slate-900/5 text-xs">
-                <div className="flex items-center gap-2">
-                  <FiFileText className="w-4.5 h-4.5 text-primary" />
-                  <div>
-                    <span className="font-bold text-brand-text block text-left">
-                      {rep.fileName || `${rep.week.replace(/\s+/g, '-').toLowerCase()}-sprint-report.pdf`}
-                    </span>
-                    <span className="text-[10px] text-brand-text-muted block text-left">
-                      {rep.fileSize || '1.45 MB'}
-                    </span>
+              {/* Render attachments */}
+              {(() => {
+                const files = rep.files && Array.isArray(rep.files) ? rep.files : (
+                  rep.fileName ? [{
+                    fileName: rep.fileName,
+                    fileSize: rep.fileSize,
+                    fileUrl: rep.fileUrl,
+                    fileId: rep.fileId
+                  }] : []
+                );
+                return (
+                  <div className="space-y-2.5">
+                    {files.map((file, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 rounded-xl border border-brand-border bg-slate-50/10 dark:bg-slate-900/5 text-xs">
+                        <div className="flex items-center gap-2 truncate pr-2">
+                          <FiFileText className="w-4.5 h-4.5 text-primary shrink-0" />
+                          <div className="truncate">
+                            <span className="font-bold text-brand-text block text-left truncate max-w-[200px]" title={file.fileName}>
+                              {file.fileName}
+                            </span>
+                            <span className="text-[10px] text-brand-text-muted block text-left shrink-0">
+                              {file.fileSize || 'N/A'}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDownload(file)}
+                          className="px-3.5 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-bold text-[10px] uppercase tracking-wider transition-all duration-300 cursor-pointer shrink-0"
+                        >
+                          View Document
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                </div>
-                <a
-                  href={rep.fileUrl || '#'}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    showToast(`Opening document: ${rep.fileName || `${rep.week.replace(/\s+/g, '-').toLowerCase()}-sprint-report.pdf`}`, 'success');
-                  }}
-                  className="px-3.5 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-bold text-[10px] uppercase tracking-wider transition-all duration-300"
-                >
-                  View Document
-                </a>
-              </div>
+                );
+              })()}
 
               {/* Feedback thread row */}
               <div className="p-3.5 rounded-xl border border-brand-border bg-slate-50/20 dark:bg-slate-900/10 text-xs">
@@ -269,14 +457,24 @@ const WeeklyReports = ({ project, teamName, onSubmitReport }) => {
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Project</label>
-                  <input
-                    type="text"
+                  <select
                     name="project"
                     value={formData.project}
                     onChange={handleChange}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 focus:outline-none focus:border-primary/50 text-sm"
-                    disabled
-                  />
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 focus:outline-none focus:border-primary/50 text-sm cursor-pointer"
+                  >
+                    {projects && projects.length > 0 ? (
+                      projects.map(p => (
+                        <option key={p.id} value={p.name}>
+                          {p.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value={project ? project.name : ''}>
+                        {project ? project.name : 'No Projects'}
+                      </option>
+                    )}
+                  </select>
                 </div>
               </div>
 
@@ -295,10 +493,11 @@ const WeeklyReports = ({ project, teamName, onSubmitReport }) => {
 
               {/* Drag and Drop File Upload */}
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Upload Report Document</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Upload Report Documents</label>
                 <div
                   onDragOver={handleDragOver}
                   onDrop={handleDrop}
+                  onClick={() => document.getElementById('weekly-file-upload').click()}
                   className="border-2 border-dashed border-slate-200 hover:border-primary/50 bg-slate-50 rounded-xl p-5 text-center transition-all duration-300 relative cursor-pointer"
                 >
                   <input
@@ -306,32 +505,45 @@ const WeeklyReports = ({ project, teamName, onSubmitReport }) => {
                     id="weekly-file-upload"
                     onChange={handleFileChange}
                     className="hidden"
+                    multiple
                   />
-                  <label htmlFor="weekly-file-upload" className="cursor-pointer space-y-2 block">
+                  <div className="cursor-pointer space-y-2 block">
                     <FiUploadCloud className="w-8 h-8 mx-auto text-slate-400" />
                     <div className="text-xs font-semibold text-slate-700">
-                      {selectedFile ? (
-                        <span className="text-primary font-bold">{selectedFile.name}</span>
-                      ) : (
-                        <span>Drag & drop a file here, or <span className="text-primary hover:underline">browse</span></span>
-                      )}
+                      <span>Drag & drop files here, or <span className="text-primary hover:underline">browse</span></span>
                     </div>
                     <p className="text-[10px] text-slate-400">
-                      Supports any document format {selectedFile && `(${(selectedFile.size / 1024 / 1024).toFixed(2)} MB)`}
+                      Supports PDF, Documents, Sheets, Images or ZIP (Max 50MB)
                     </p>
-                  </label>
-                  
-                  {selectedFile && (
-                    <button
-                      type="button"
-                      onClick={handleRemoveFile}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-colors"
-                      title="Remove file"
-                    >
-                      <FiTrash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                  </div>
                 </div>
+
+                {/* List of uploaded files */}
+                {selectedFiles.length > 0 && (
+                  <div className="mt-3 space-y-2 max-h-[140px] overflow-y-auto custom-scrollbar">
+                    {selectedFiles.map((file, index) => (
+                      <div key={index} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-100 bg-slate-50/50 text-xs">
+                        <div className="flex items-center gap-2 truncate pr-2">
+                          <FiFileText className="w-4 h-4 text-cyan-500 shrink-0" />
+                          <span className="truncate text-slate-700 font-medium" title={file.name}>
+                            {file.name}
+                          </span>
+                          <span className="text-[10px] text-slate-400 shrink-0">
+                            ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }}
+                          className="p-1 rounded bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-colors"
+                          title="Remove file"
+                        >
+                          <FiTrash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -351,16 +563,27 @@ const WeeklyReports = ({ project, teamName, onSubmitReport }) => {
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider transition-colors duration-300 focus:outline-none cursor-pointer"
+                  disabled={uploading}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider transition-colors duration-300 focus:outline-none cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-xs uppercase tracking-wider hover:shadow-glow-primary transition-all duration-300 flex items-center gap-1.5 focus:outline-none cursor-pointer"
+                  disabled={uploading}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-xs uppercase tracking-wider hover:shadow-glow-primary transition-all duration-300 flex items-center gap-1.5 focus:outline-none cursor-pointer disabled:opacity-50"
                 >
-                  <FiCheck className="w-4 h-4" />
-                  <span>Submit Report</span>
+                  {uploading ? (
+                    <>
+                      <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      <span>Uploading File...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FiCheck className="w-4 h-4" />
+                      <span>Submit Report</span>
+                    </>
+                  )}
                 </button>
               </div>
 
@@ -368,6 +591,18 @@ const WeeklyReports = ({ project, teamName, onSubmitReport }) => {
           </div>
         </>
       )}
+
+      {/* Global Confirmation Modal */}
+      <ConfirmModal
+        isOpen={confirmModalState.isOpen}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
+        confirmText={confirmModalState.confirmText}
+        cancelText={confirmModalState.cancelText}
+        variant={confirmModalState.variant}
+        onConfirm={confirmModalState.onConfirm}
+        onCancel={() => setConfirmModalState(prev => ({ ...prev, isOpen: false }))}
+      />
 
     </div>
   );

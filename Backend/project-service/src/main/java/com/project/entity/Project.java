@@ -4,6 +4,8 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 @Document(collection = "projects")
 public class Project {
@@ -28,6 +30,7 @@ public class Project {
     private List<Task> tasks = new ArrayList<>();
     private List<Milestone> milestones = new ArrayList<>();
     private List<WeeklyReport> weeklyReports = new ArrayList<>();
+    private Map<String, Object> mentorFeedback = new HashMap<>();
 
     public Project() {}
 
@@ -84,4 +87,7 @@ public class Project {
 
     public List<WeeklyReport> getWeeklyReports() { return weeklyReports; }
     public void setWeeklyReports(List<WeeklyReport> weeklyReports) { this.weeklyReports = weeklyReports; }
+
+    public Map<String, Object> getMentorFeedback() { return mentorFeedback; }
+    public void setMentorFeedback(Map<String, Object> mentorFeedback) { this.mentorFeedback = mentorFeedback; }
 }

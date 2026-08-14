@@ -1,7 +1,25 @@
 import React from 'react';
-import { FiArrowLeft, FiActivity, FiGithub, FiCalendar } from 'react-icons/fi';
+import { FiArrowLeft, FiActivity, FiGithub, FiCalendar, FiCheckSquare } from 'react-icons/fi';
+import { api } from '../utils/api';
+import HealthScoreCard from '../components/HealthScoreCard';
 
-const TeamDetails = ({ team, onBack }) => {
+const TeamDetails = ({ team, onBack, onUpdateTeamHealth }) => {
+  const [memberMetrics, setMemberMetrics] = React.useState([]);
+
+  React.useEffect(() => {
+    async function loadMetrics() {
+      if (team && team.name) {
+        try {
+          const metrics = await api.getMemberMetricsByTeam(team.name);
+          setMemberMetrics(metrics || []);
+        } catch (e) {
+          console.warn('Failed to load member metrics:', e);
+        }
+      }
+    }
+    loadMetrics();
+  }, [team]);
+
   // Find active project from localStorage matching team name
   const activeProject = React.useMemo(() => {
     if (!team) return null;
@@ -16,6 +34,68 @@ const TeamDetails = ({ team, onBack }) => {
     }
     return null;
   }, [team]);
+
+  const projectHealth = activeProject ? activeProject.health : (team.health || 100);
+  const projectHealthDetails = activeProject ? activeProject.healthDetails : { scores: [team.health || 100], months: ['Jun'] };
+
+  const handleUpdateHealth = async (newHealth) => {
+    try {
+      if (activeProject) {
+        const updatedProj = {
+          ...activeProject,
+          health: newHealth
+        };
+        
+        if (updatedProj.healthDetails) {
+          const scores = [...(updatedProj.healthDetails.scores || [])];
+          if (scores.length > 0) {
+            scores[scores.length - 1] = newHealth;
+          } else {
+            scores.push(newHealth);
+          }
+          updatedProj.healthDetails = {
+            ...updatedProj.healthDetails,
+            scores: scores
+          };
+        }
+
+        await api.updateProject(activeProject.id, updatedProj);
+        
+        const stored = localStorage.getItem('projects');
+        if (stored) {
+          const allProj = JSON.parse(stored);
+          const nextAllProj = allProj.map(p => p.id === activeProject.id ? updatedProj : p);
+          localStorage.setItem('projects', JSON.stringify(nextAllProj));
+          window.dispatchEvent(new Event('storage'));
+        }
+      }
+      
+      const fetchedTeams = await api.listTeams() || [];
+      const dbTeam = fetchedTeams.find(t => t.name && t.name.toLowerCase() === team.name.toLowerCase());
+      if (dbTeam) {
+        const updatedTeam = {
+          ...dbTeam,
+          health: newHealth
+        };
+        
+        await api.updateTeam(dbTeam.id, updatedTeam);
+        
+        const storedTeams = localStorage.getItem('databaseTeams');
+        if (storedTeams) {
+          const allTeams = JSON.parse(storedTeams);
+          const nextAllTeams = allTeams.map(t => t.id === dbTeam.id ? updatedTeam : t);
+          localStorage.setItem('databaseTeams', JSON.stringify(nextAllTeams));
+        }
+      }
+      
+      // Trigger parent callback to update layout states instantly
+      if (onUpdateTeamHealth && dbTeam) {
+        onUpdateTeamHealth(team.id, newHealth);
+      }
+    } catch (err) {
+      console.error('Failed to update team/project health score:', err);
+    }
+  };
 
   const dynamicRoster = React.useMemo(() => {
     if (!team) return { leaderName: 'Not Assigned', memberNames: [] };
@@ -61,13 +141,18 @@ const TeamDetails = ({ team, onBack }) => {
     { name: 'Vite UI connection endpoints', dueDate: '2026-07-02', status: 'Pending' }
   ]);
 
-  const github = activeProject && activeProject.github ? activeProject.github : {
-    commits: 0,
-    prs: 0,
-    openIssues: 0,
-    closedIssues: 0,
-    contributionPercentage: 0
-  };
+  const github = React.useMemo(() => {
+    let totalCommits = 0;
+    let totalPRs = 0;
+    memberMetrics.forEach(m => {
+      totalCommits += m.commitsCount || 0;
+      totalPRs += m.prsCount || 0;
+    });
+    return {
+      commits: totalCommits,
+      prs: totalPRs
+    };
+  }, [memberMetrics]);
 
   const tasks = activeProject && activeProject.tasks ? activeProject.tasks : (team.tasks || [
     { status: 'Completed' }, { status: 'Completed' }, { status: 'In Progress' }, { status: 'Pending' }
@@ -96,7 +181,7 @@ const TeamDetails = ({ team, onBack }) => {
 
     return (
       <div className="flex items-start gap-2.5 overflow-x-auto w-full pb-3 pt-2 custom-scrollbar justify-start select-none">
-        {months.map((m, mIdx) => {
+        {months.map((m) => {
           // Adjust activity weighting dynamically to simulate a realistic contribution history
           let activityWeight = 0.08;
           if (m.name === 'Jun') activityWeight = 0.65;
@@ -245,6 +330,9 @@ const TeamDetails = ({ team, onBack }) => {
         )}
       </div>
 
+      {/* Health Score section */}
+      <HealthScoreCard health={projectHealth} healthDetails={projectHealthDetails} onUpdateHealth={handleUpdateHealth} />
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
@@ -323,38 +411,69 @@ const TeamDetails = ({ team, onBack }) => {
             </h3>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-            {/* Heatmap placeholder */}
-            <div className="md:col-span-6 flex flex-col items-center justify-center space-y-2">
-              <span className="text-xs font-bold text-brand-text-muted">Repository Activity Heatmap</span>
-              {renderHeatmap()}
+          <div className="w-full space-y-3 text-left">
+            <div className="grid grid-cols-2 gap-3 text-center">
+              <div className="p-3 rounded-xl border border-brand-border bg-slate-50/20 dark:bg-slate-900/10">
+                <span className="text-[10px] font-bold text-brand-text-muted uppercase block">Commits</span>
+                <span className="text-base font-extrabold text-brand-text">{github.commits}</span>
+              </div>
+              <div className="p-3 rounded-xl border border-brand-border bg-slate-50/20 dark:bg-slate-900/10">
+                <span className="text-[10px] font-bold text-brand-text-muted uppercase block">PRs Open</span>
+                <span className="text-base font-extrabold text-brand-text">{github.prs}</span>
+              </div>
             </div>
+          </div>
+        </div>
 
-            {/* Commits rows */}
-            <div className="md:col-span-6 space-y-3 text-left">
-              <div className="grid grid-cols-2 gap-3 text-center">
-                <div className="p-3 rounded-xl border border-brand-border bg-slate-50/20 dark:bg-slate-900/10">
-                  <span className="text-[10px] font-bold text-brand-text-muted uppercase block">Commits</span>
-                  <span className="text-base font-extrabold text-brand-text">{github.commits}</span>
-                </div>
-                <div className="p-3 rounded-xl border border-brand-border bg-slate-50/20 dark:bg-slate-900/10">
-                  <span className="text-[10px] font-bold text-brand-text-muted uppercase block">PRs Open</span>
-                  <span className="text-base font-extrabold text-brand-text">{github.prs}</span>
-                </div>
-                <div className="p-3 rounded-xl border border-brand-border bg-slate-50/20 dark:bg-slate-900/10">
-                  <span className="text-[10px] font-bold text-brand-text-muted uppercase block">Open Issues</span>
-                  <span className="text-base font-extrabold text-brand-text">{github.openIssues}</span>
-                </div>
-                <div className="p-3 rounded-xl border border-brand-border bg-slate-50/20 dark:bg-slate-900/10">
-                  <span className="text-[10px] font-bold text-brand-text-muted uppercase block">Closed Issues</span>
-                  <span className="text-base font-extrabold text-brand-text">{github.closedIssues}</span>
-                </div>
+        {/* Assigned Tasks Card */}
+        <div className="p-6 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-md lg:col-span-2 space-y-4">
+          <div className="flex items-center gap-2 pb-3 border-b border-brand-border">
+            <FiCheckSquare className="w-5 h-5 text-cyan-500" />
+            <h3 className="text-sm font-extrabold uppercase tracking-widest text-brand-text">
+              Assigned Tasks
+            </h3>
+          </div>
+
+          <div className="space-y-3 pt-1">
+            {tasks.length === 0 ? (
+              <p className="text-xs text-brand-text-muted italic py-2">No tasks assigned yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {tasks.map((task, idx) => (
+                  <div
+                    key={idx}
+                    className="p-4 rounded-xl border border-brand-border bg-slate-50/20 dark:bg-slate-900/10 hover:border-cyan-500/20 transition-all duration-300 flex flex-col justify-between space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h4 className="text-xs font-bold text-brand-text">{task.name}</h4>
+                        <p className="text-[10px] text-brand-text-muted mt-1 leading-relaxed">
+                          {task.description || 'No description provided.'}
+                        </p>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
+                        task.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
+                        task.status === 'In Progress' ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
+                        'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                      }`}>
+                        {task.status}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-brand-text-muted font-semibold border-t border-brand-border/40 pt-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] uppercase tracking-wider">Assignee:</span>
+                        <span className="text-brand-text font-bold">{task.student || 'Unassigned'}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] uppercase tracking-wider">Due:</span>
+                        <span className="text-brand-text font-bold">{task.deadline || '--'}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="p-3 rounded-xl border border-brand-border bg-slate-50/30 dark:bg-slate-900/10 flex items-center justify-between text-xs font-semibold text-brand-text-muted">
-                <span>Contribution Share</span>
-                <span className="text-primary font-bold">{github.contributionPercentage}% Workshare</span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
 

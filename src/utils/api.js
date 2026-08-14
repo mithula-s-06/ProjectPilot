@@ -1,3 +1,5 @@
+import { fileStorage } from './fileStorage';
+
 const AUTH_URL = 'http://localhost:8081';
 const PROJECT_URL = 'http://localhost:8082';
 
@@ -16,7 +18,7 @@ async function request(url, options = {}) {
     try {
       const errorText = await response.text();
       errorMsg = errorText || errorMsg;
-    } catch (err) {}
+    } catch {}
     throw new Error(errorMsg);
   }
 
@@ -96,7 +98,7 @@ function mapProjectToBackend(p) {
 
 export const api = {
   // Authentication & Users (auth-service)
-  async login(email, password) {
+  async login(email, password, department = null, collegeName = null) {
     const data = await request(`${AUTH_URL}/api/auth/login`, {
       method: 'POST',
       body: JSON.stringify({ email, password }),
@@ -110,12 +112,45 @@ export const api = {
                        : data.role === 'MENTOR' ? 'Mentor' 
                        : 'Student';
 
+      // Read from backend profile if possible to get persistent department & collegeName!
+      let dbProfile = null;
+      try {
+        const users = await request(`${PROJECT_URL}/api/users`, {
+          headers: { 'Authorization': `Bearer ${data.token}` }
+        });
+        dbProfile = (users || []).find(u => u.email.toLowerCase() === email.toLowerCase());
+      } catch (err) {
+        console.warn('Fetching profile on login failed:', err);
+      }
+
+      // If user profile is missing in MongoDB (e.g. after re-registration, direct auth, or DB reset),
+      // auto-create their profile in MongoDB so they can seamlessly use the system!
+      if (!dbProfile && email.toLowerCase() !== 'admin@pp.edu') {
+        try {
+          const authRole = data.role || 'STUDENT';
+          const newProfile = {
+            name: data.name || email.split('@')[0],
+            email: data.email,
+            role: authRole,
+            department: department || 'Computer Science & Engineering',
+            collegeName: collegeName || ''
+          };
+          dbProfile = await request(`${PROJECT_URL}/api/users`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${data.token}` },
+            body: JSON.stringify(newProfile),
+          });
+        } catch (syncErr) {
+          console.warn('Auto-creating MongoDB profile during login failed:', syncErr);
+        }
+      }
+
       const userProfile = {
         fullName: data.name || (mappedRole === 'System Administrator' ? 'Administrator' : email.split('@')[0]),
         email: data.email,
         role: mappedRole,
-        collegeName: 'ProjectPilot University',
-        department: 'Computer Science & Engineering',
+        collegeName: (dbProfile && dbProfile.collegeName) || collegeName || (mappedRole === 'System Administrator' ? 'ProjectPilot Platform' : ''),
+        department: (dbProfile && dbProfile.department) || department || 'Computer Science & Engineering',
       };
       
       localStorage.setItem('currentUser', JSON.stringify(userProfile));
@@ -124,40 +159,68 @@ export const api = {
     throw new Error('Invalid token returned');
   },
 
-  async register(name, email, password, role) {
-    // 1. Register in auth-service (Oracle / MongoDB)
+  async register(name, email, password, role, department = 'Computer Science & Engineering', collegeName = '') {
+    // 1. Register in auth-service (MySQL)
     const authRole = role === 'Team Leader' ? 'TEAM_LEADER' 
                    : role === 'Mentor' ? 'MENTOR' 
                    : role === 'Student' ? 'STUDENT' 
                    : role.toUpperCase();
 
-    const registerResult = await request(`${AUTH_URL}/api/auth/register`, {
-      method: 'POST',
-      body: JSON.stringify({ name, email, password, role: authRole }),
-    });
-
-    // 2. Try to auto-login to get token for project-service profile creation
     try {
-      const loginData = await this.login(email, password);
-      
-      // 3. Create profile in project-service (MongoDB)
-      await request(`${PROJECT_URL}/api/users`, {
+      await request(`${AUTH_URL}/api/auth/register`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${loginData.token}` },
-        body: JSON.stringify({
-          name,
-          email,
-          role: authRole,
-          department: 'Computer Science & Engineering',
-          salary: 50000.0,
-          joinDate: new Date().toISOString().split('T')[0]
-        }),
+        body: JSON.stringify({ name, email, password, role: authRole }),
       });
+    } catch (regErr) {
+      // If email is already registered in auth-service (e.g. from previous account or re-registration),
+      // we proceed to login and ensure the profile in project-service is created/synced.
+      if (regErr.message && regErr.message.includes('Email already registered')) {
+        console.info('Email already registered in auth-service, proceeding to sync profile.');
+      } else {
+        throw regErr;
+      }
+    }
+
+    // 2. Login to get token and set up session
+    const loginData = await this.login(email, password, department, collegeName);
+
+    // 3. Ensure profile exists and is updated in project-service (MongoDB)
+    try {
+      const users = await request(`${PROJECT_URL}/api/users`, {
+        headers: { 'Authorization': `Bearer ${loginData.token}` }
+      });
+      const existingUser = (users || []).find(u => u.email.toLowerCase() === email.toLowerCase());
+      if (!existingUser) {
+        await request(`${PROJECT_URL}/api/users`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${loginData.token}` },
+          body: JSON.stringify({
+            name,
+            email,
+            role: authRole,
+            department,
+            collegeName
+          }),
+        });
+      } else {
+        // If profile exists, ensure collegeName and department are up to date from signup form
+        await request(`${PROJECT_URL}/api/users/${existingUser.id}`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${loginData.token}` },
+          body: JSON.stringify({
+            ...existingUser,
+            name,
+            collegeName: collegeName || existingUser.collegeName,
+            department: department || existingUser.department,
+            role: authRole
+          }),
+        });
+      }
     } catch (err) {
       console.warn('Auto profile syncing to project-service failed:', err);
     }
 
-    return registerResult;
+    return loginData;
   },
 
   async getSession() {
@@ -224,6 +287,166 @@ export const api = {
     });
   },
 
+    async uploadFile(file) {
+    if (!file) {
+      throw new Error('No file selected');
+    }
+
+    const formData = new FormData();
+
+    // IMPORTANT:
+    // Send the original File object directly.
+    // Do not convert it to text, JSON, Base64, or anything else.
+    formData.append('file', file, file.name);
+
+    const token = localStorage.getItem('token');
+
+    const headers = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(
+      `${PROJECT_URL}/api/files/upload`,
+      {
+        method: 'POST',
+        headers,
+        body: formData
+      }
+    );
+
+    if (!response.ok) {
+      let message = `Upload failed with status: ${response.status}`;
+
+      try {
+        const errorText = await response.text();
+
+        if (errorText) {
+          message = errorText;
+        }
+      } catch (error) {
+        console.error('Unable to read upload error:', error);
+      }
+
+      throw new Error(message);
+    }
+
+    const data = await response.json();
+
+    /*
+     * The backend MUST return the ID of the stored file.
+     *
+     * Example:
+     * {
+     *   id: "...",
+     *   fileName: "report.pdf",
+     *   contentType: "application/pdf",
+     *   fileSize: "12345",
+     *   fileUrl: "..."
+     * }
+     */
+
+    if (!data || !data.id) {
+      throw new Error(
+        'File was uploaded but the server did not return a file ID.'
+      );
+    }
+
+    return {
+      id: data.id,
+
+      fileName:
+        data.fileName || file.name,
+
+      contentType:
+        data.contentType ||
+        file.type ||
+        'application/octet-stream',
+
+      fileSize:
+        data.fileSize ||
+        String(file.size),
+
+      fileUrl:
+        data.fileUrl ||
+        `${PROJECT_URL}/api/files/download/${data.id}`
+    };
+  },
+
+  async downloadFile(fileIdOrUrl) {
+    if (!fileIdOrUrl) {
+      throw new Error('No file ID or file URL provided');
+    }
+
+    // 1. Try to extract fileId and check local IndexedDB first
+    let fileId = null;
+    if (typeof fileIdOrUrl === 'string') {
+      if (fileIdOrUrl.startsWith('local-file:')) {
+        fileId = fileIdOrUrl.substring('local-file:'.length);
+      } else if (fileIdOrUrl.includes('/api/files/download/')) {
+        fileId = fileIdOrUrl.split('/api/files/download/')[1];
+      } else if (!fileIdOrUrl.startsWith('http://') && !fileIdOrUrl.startsWith('https://')) {
+        fileId = fileIdOrUrl;
+      }
+    }
+
+    if (fileId) {
+      try {
+        const localBlob = await fileStorage.getFile(fileId);
+        if (localBlob && localBlob.size > 0) {
+          console.log('Retrieving file from local IndexedDB storage:', fileId);
+          return localBlob;
+        }
+      } catch (err) {
+        console.warn('Failed to retrieve file from IndexedDB:', err);
+      }
+    }
+
+    // 2. Fall back to backend fetch
+    const token = localStorage.getItem('token');
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    let url;
+    if (
+      typeof fileIdOrUrl === 'string' &&
+      (fileIdOrUrl.startsWith('http://') || fileIdOrUrl.startsWith('https://'))
+    ) {
+      url = fileIdOrUrl;
+    } else {
+      url = `${PROJECT_URL}/api/files/download/${fileIdOrUrl}`;
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      if (!blob || blob.size === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+      return blob;
+    } catch (err) {
+      console.warn('Backend download failed, attempting final local IndexedDB fallback:', err);
+      if (fileId) {
+        const fallbackBlob = await fileStorage.getFile(fileId);
+        if (fallbackBlob && fallbackBlob.size > 0) {
+          return fallbackBlob;
+        }
+      }
+      throw err;
+    }
+  },
+
   // Teams CRUD (project-service)
   async listTeams() {
     return await request(`${PROJECT_URL}/api/teams`);
@@ -240,6 +463,12 @@ export const api = {
     return await request(`${PROJECT_URL}/api/teams/${id}`, {
       method: 'PUT',
       body: JSON.stringify(teamData),
+    });
+  },
+
+  async deleteTeam(id) {
+    return await request(`${PROJECT_URL}/api/teams/${id}`, {
+      method: 'DELETE',
     });
   },
 
@@ -283,5 +512,169 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(reviewData),
     });
+  },
+
+  async reanalyzeWeeklyReport(projectId, reportId) {
+    return await request(`${PROJECT_URL}/api/projects/${projectId}/reports/${reportId}/analyze`, {
+      method: 'POST',
+    });
+  },
+
+  async listNotifications() {
+    return await request(`${PROJECT_URL}/api/notifications`, {
+      method: 'GET',
+    });
+  },
+
+  async createNotification(notificationData) {
+    return await request(`${PROJECT_URL}/api/notifications`, {
+      method: 'POST',
+      body: JSON.stringify(notificationData),
+    });
+  },
+
+  async deleteNotification(id) {
+    return await request(`${PROJECT_URL}/api/notifications/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async clearNotifications() {
+    return await request(`${PROJECT_URL}/api/notifications`, {
+      method: 'DELETE',
+    });
+  },
+
+  async listSuggestions() {
+    return await request(`${PROJECT_URL}/api/suggestions`, {
+      method: 'GET',
+    });
+  },
+
+  async getSuggestionsByProject(projectId) {
+    return await request(`${PROJECT_URL}/api/suggestions/project/${projectId}`, {
+      method: 'GET',
+    });
+  },
+
+  async getSuggestionsByRecipient(email) {
+    return await request(`${PROJECT_URL}/api/suggestions/email/${email}`, {
+      method: 'GET',
+    });
+  },
+
+  async getSuggestionsByTeam(teamName) {
+    return await request(`${PROJECT_URL}/api/suggestions/team/${teamName}`, {
+      method: 'GET',
+    });
+  },
+
+  async createSuggestion(suggestionData) {
+    return await request(`${PROJECT_URL}/api/suggestions`, {
+      method: 'POST',
+      body: JSON.stringify(suggestionData),
+    });
+  },
+
+  async deleteSuggestion(id) {
+    return await request(`${PROJECT_URL}/api/suggestions/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Member Metrics API
+  async listAllMemberMetrics() {
+    return await request(`${PROJECT_URL}/api/member-metrics`);
+  },
+
+  async getMemberMetricsByTeam(teamName) {
+    return await request(`${PROJECT_URL}/api/member-metrics/team/${encodeURIComponent(teamName)}`);
+  },
+
+  async getMemberMetricsByEmail(email) {
+    return await request(`${PROJECT_URL}/api/member-metrics/member/${encodeURIComponent(email)}`);
+  },
+
+  async saveOrUpdateMemberMetric(metricData) {
+    return await request(`${PROJECT_URL}/api/member-metrics`, {
+      method: 'POST',
+      body: JSON.stringify(metricData),
+    });
+  }
+};
+
+export const addNotification = async (title, message, targetEmail = null, targetTeam = null, type = 'info') => {
+  try {
+    const newNotif = {
+      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      title,
+      message,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      date: new Date().toISOString().split('T')[0],
+      type,
+      targetEmail: targetEmail ? targetEmail.toLowerCase() : null,
+      targetTeam: targetTeam ? targetTeam.toLowerCase() : null
+    };
+
+    // Save to backend database!
+    try {
+      await api.createNotification(newNotif);
+    } catch (dbErr) {
+      console.warn('Failed to save notification to backend:', dbErr);
+    }
+
+    // LocalStorage fallback for offline/instant sync
+    const stored = localStorage.getItem('notifications');
+    const list = stored ? JSON.parse(stored) : [];
+    if (!list.some(n => n.id === newNotif.id)) {
+      list.unshift(newNotif);
+    }
+    const serialized = JSON.stringify(list);
+    localStorage.setItem('notifications', serialized);
+    const storageEvent = new StorageEvent('storage', {
+      key: 'notifications',
+      newValue: serialized,
+      storageArea: localStorage
+    });
+    window.dispatchEvent(storageEvent);
+  } catch (e) {
+    console.error('Failed to dispatch notification:', e);
+  }
+};
+
+export const seedHistoricalNotifications = async () => {
+  try {
+    const stored = localStorage.getItem('notifications');
+    let notificationsList = stored ? JSON.parse(stored) : [];
+
+    // Fetch from backend
+    let backendNotifs = [];
+    try {
+      backendNotifs = await api.listNotifications() || [];
+    } catch (err) {
+      console.warn('Failed to fetch notifications from backend:', err);
+    }
+
+    let updated = false;
+    // Merge any backend notifications not present locally
+    backendNotifs.forEach(bn => {
+      if (!notificationsList.some(n => n.id === bn.id)) {
+        notificationsList.push(bn);
+        updated = true;
+      }
+    });
+
+    if (updated) {
+      const serialized = JSON.stringify(notificationsList);
+      localStorage.setItem('notifications', serialized);
+      const storageEvent = new StorageEvent('storage', {
+        key: 'notifications',
+        newValue: serialized,
+        storageArea: localStorage
+      });
+      window.dispatchEvent(storageEvent);
+    }
+  } catch (e) {
+    console.error('Failed to sync notifications:', e);
   }
 };

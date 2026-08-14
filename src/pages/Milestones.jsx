@@ -1,14 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiX, FiCheck, FiCalendar, FiFlag } from 'react-icons/fi';
+import { FiPlus, FiX, FiCheck, FiCalendar, FiFlag, FiTrash2, FiEdit } from 'react-icons/fi';
+import { addNotification } from '../utils/api';
+import ConfirmModal from '../components/ConfirmModal';
 
-const Milestones = ({ project, teamName, onUpdateMilestones }) => {
+const Milestones = ({ project, _teamName, onUpdateMilestones }) => {
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingMilestone, setEditingMilestone] = useState(null);
   const [milestones, setMilestones] = useState(() => {
     if (project && project.milestones) {
       return project.milestones;
     }
     return [];
   });
+
+  const [confirmModalState, setConfirmModalState] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    variant: 'primary',
+    onConfirm: () => {},
+  });
+
+  const todayStr = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
     if (project && project.milestones) {
@@ -37,6 +52,82 @@ const Milestones = ({ project, teamName, onUpdateMilestones }) => {
     if (toast && toast.type === 'error') setToast(null);
   };
 
+  const handleToggleStatus = (id) => {
+    const ms = milestones.find(m => m.id === id);
+    if (!ms) return;
+    const isCompleted = ms.status === 'Completed';
+    const nextStatus = isCompleted ? 'Pending' : 'Completed';
+    const nextProgress = isCompleted ? 0 : 100;
+
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Update Milestone Status?',
+      message: `Do you want to mark "${ms.name}" as ${nextStatus}?`,
+      confirmText: 'Update Status',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      onConfirm: () => {
+        setConfirmModalState(prev => ({ ...prev, isOpen: false }));
+        const nextMilestones = milestones.map(m =>
+          m.id === id ? { ...m, status: nextStatus, progress: nextProgress } : m
+        );
+        setMilestones(nextMilestones);
+        if (onUpdateMilestones) {
+          onUpdateMilestones(nextMilestones);
+        }
+        showToast(`Milestone updated to ${nextStatus}!`, 'success');
+      }
+    });
+  };
+
+  const handleDeleteMilestone = (id) => {
+    const ms = milestones.find(m => m.id === id);
+    const msName = ms ? ms.name : 'this milestone';
+
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Delete Milestone?',
+      message: `Are you sure you want to permanently delete "${msName}"? This action cannot be undone.`,
+      confirmText: 'Delete Milestone',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      onConfirm: () => {
+        setConfirmModalState(prev => ({ ...prev, isOpen: false }));
+        const nextMilestones = milestones.filter(m => m.id !== id);
+        setMilestones(nextMilestones);
+        if (onUpdateMilestones) {
+          onUpdateMilestones(nextMilestones);
+        }
+        showToast('Milestone deleted successfully!', 'success');
+      }
+    });
+  };
+  const handleCreateClick = () => {
+    setEditingMilestone(null);
+    setFormData({
+      name: '',
+      description: '',
+      dueDate: '',
+      priority: 'High',
+      progress: 0,
+      status: 'Pending'
+    });
+    setModalOpen(true);
+  };
+
+  const handleEditClick = (ms) => {
+    setEditingMilestone(ms);
+    setFormData({
+      name: ms.name,
+      description: ms.description || '',
+      dueDate: ms.dueDate,
+      priority: ms.priority || 'High',
+      progress: ms.progress || 0,
+      status: ms.status || 'Pending'
+    });
+    setModalOpen(true);
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.dueDate) {
@@ -44,25 +135,84 @@ const Milestones = ({ project, teamName, onUpdateMilestones }) => {
       return;
     }
 
-    const nextMilestones = [
-      ...milestones,
-      {
-        id: `ms-${Date.now()}`,
-        name: formData.name,
-        dueDate: formData.dueDate,
-        progress: 0,
-        status: 'Pending'
-      }
-    ];
-
-    setMilestones(nextMilestones);
-    if (onUpdateMilestones) {
-      onUpdateMilestones(nextMilestones);
+    if (!editingMilestone && formData.dueDate < todayStr) {
+      showToast('Due date cannot be in the past. Please select today or a future date.', 'error');
+      return;
     }
 
-    showToast('Milestone declared successfully!', 'success');
-    setModalOpen(false);
-    setFormData({ name: '', description: '', dueDate: '', priority: 'High' });
+    const actionTitle = editingMilestone ? 'Update Milestone?' : 'Declare New Milestone?';
+    const actionMessage = editingMilestone 
+      ? `Do you want to save changes for "${formData.name}"?`
+      : `Do you want to add "${formData.name}" with due date ${formData.dueDate}?`;
+    const actionConfirmText = editingMilestone ? 'Save Changes' : 'Declare Milestone';
+
+    setConfirmModalState({
+      isOpen: true,
+      title: actionTitle,
+      message: actionMessage,
+      confirmText: actionConfirmText,
+      cancelText: 'Cancel',
+      variant: 'primary',
+      onConfirm: () => {
+        setConfirmModalState(prev => ({ ...prev, isOpen: false }));
+        
+        let nextMilestones;
+        if (editingMilestone) {
+          const progressVal = Number(formData.progress);
+          const statusVal = progressVal === 100 ? 'Completed' : formData.status;
+          nextMilestones = milestones.map(m =>
+            m.id === editingMilestone.id ? {
+              ...m,
+              name: formData.name,
+              dueDate: formData.dueDate,
+              priority: formData.priority,
+              description: formData.description,
+              progress: progressVal,
+              status: statusVal
+            } : m
+          );
+          showToast('Milestone updated successfully!', 'success');
+        } else {
+          nextMilestones = [
+            ...milestones,
+            {
+              id: `ms-${Date.now()}`,
+              name: formData.name,
+              dueDate: formData.dueDate,
+              priority: formData.priority,
+              description: formData.description,
+              progress: 0,
+              status: 'Pending'
+            }
+          ];
+
+          try {
+            const targetTeam = project ? project.teamName : _teamName;
+            if (targetTeam) {
+              addNotification(
+                'New Milestone Declared',
+                `Milestone "${formData.name}" has been declared for your team.`,
+                null,
+                targetTeam,
+                'info'
+              );
+            }
+          } catch (err) {
+            console.error('Failed to dispatch milestone notification:', err);
+          }
+
+          showToast('Milestone declared successfully!', 'success');
+        }
+
+        setMilestones(nextMilestones);
+        if (onUpdateMilestones) {
+          onUpdateMilestones(nextMilestones);
+        }
+        setModalOpen(false);
+        setEditingMilestone(null);
+        setFormData({ name: '', description: '', dueDate: '', priority: 'High', progress: 0, status: 'Pending' });
+      }
+    });
   };
 
   return (
@@ -87,7 +237,7 @@ const Milestones = ({ project, teamName, onUpdateMilestones }) => {
 
         <button
           type="button"
-          onClick={() => setModalOpen(true)}
+          onClick={handleCreateClick}
           className="px-5 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-xs uppercase tracking-wider hover:shadow-glow-primary hover-lift transition-all duration-300 inline-flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer self-start sm:self-auto"
         >
           <FiPlus className="w-4 h-4" />
@@ -114,19 +264,43 @@ const Milestones = ({ project, teamName, onUpdateMilestones }) => {
               {/* details card */}
               <div className="p-5 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md hover:border-primary/20 transition-all duration-300 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 className={`text-sm font-extrabold tracking-tight ${isCompleted ? 'text-brand-text-muted line-through' : 'text-brand-text'}`}>
+                  <h4 className={`text-sm font-extrabold tracking-tight ${isCompleted ? 'text-brand-text-muted' : 'text-brand-text'}`}>
                     {ms.name}
                   </h4>
-                  <span className={`px-2.5 py-0.5 rounded text-[9px] font-extrabold uppercase border ${
-                    isCompleted ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-primary/10 text-primary border-primary/20 animate-pulse'
-                  }`}>
-                    {ms.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleStatus(ms.id)}
+                      className={`px-2.5 py-0.5 rounded text-[9px] font-extrabold uppercase border cursor-pointer transition-colors ${
+                        isCompleted ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20'
+                      }`}
+                    >
+                      {ms.status}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleEditClick(ms)}
+                      className="p-1 rounded-lg text-brand-text-muted hover:text-primary hover:bg-primary/10 transition-colors"
+                      title="Edit Milestone"
+                    >
+                      <FiEdit className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMilestone(ms.id)}
+                      className="p-1 rounded-lg text-brand-text-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                      title="Delete Milestone"
+                    >
+                      <FiTrash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-4 text-xs font-semibold text-brand-text-muted">
                   <span className="flex items-center gap-1">
-                    <FiCalendar className="w-3.5 h-3.5" /> Due: {ms.dueDate}
+                    <FiCalendar className="w-3.5 h-3.5 text-primary" /> Due: {ms.dueDate}
                   </span>
                   <span>•</span>
                   <span>Completion: <strong>{ms.progress}%</strong></span>
@@ -150,13 +324,13 @@ const Milestones = ({ project, teamName, onUpdateMilestones }) => {
       {modalOpen && (
         <>
           <div onClick={() => setModalOpen(false)} className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 transition-opacity duration-300" />
-          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[calc(100vw-32px)] max-w-[450px] max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl p-6 z-50 text-left animate-scale-up custom-scrollbar">
+          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[calc(100vw-32px)] max-w-[450px] max-h-[90vh] overflow-y-auto rounded-2xl border border-brand-border bg-brand-card shadow-2xl p-6 z-50 text-left animate-scale-up custom-scrollbar">
             
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-5">
-              <h3 className="text-sm font-extrabold uppercase tracking-widest text-slate-800">
-                Declare Target Milestone
+            <div className="flex items-center justify-between pb-3.5 border-b border-brand-border mb-5">
+              <h3 className="text-sm font-extrabold uppercase tracking-widest text-brand-text">
+                {editingMilestone ? 'Edit Target Milestone' : 'Declare Target Milestone'}
               </h3>
-              <button type="button" onClick={() => setModalOpen(false)} className="p-1 rounded-full border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50 focus:outline-none cursor-pointer">
+              <button type="button" onClick={() => setModalOpen(false)} className="p-1 rounded-full border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none cursor-pointer">
                 <FiX className="w-4 h-4" />
               </button>
             </div>
@@ -169,61 +343,91 @@ const Milestones = ({ project, teamName, onUpdateMilestones }) => {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Milestone Name</label>
+                <label className="text-[10px] font-bold text-brand-text-muted uppercase block mb-1.5">Milestone Name</label>
                 <input
                   type="text"
                   name="name"
                   value={formData.name}
                   onChange={handleChange}
                   placeholder="e.g. Phase 2 local test suites complete"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 focus:outline-none focus:border-primary/50 text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Due Date</label>
+                <label className="text-[10px] font-bold text-brand-text-muted uppercase block mb-1.5">Due Date</label>
                 <input
                   type="date"
                   name="dueDate"
+                  min={editingMilestone ? undefined : todayStr}
                   value={formData.dueDate}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 focus:outline-none focus:border-primary/50 text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Priority</label>
+                <label className="text-[10px] font-bold text-brand-text-muted uppercase block mb-1.5">Priority</label>
                 <select
                   name="priority"
                   value={formData.priority}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 focus:outline-none focus:border-primary/50 text-sm cursor-pointer"
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm cursor-pointer"
                 >
-                  <option value="High">High Target</option>
-                  <option value="Medium">Medium Target</option>
-                  <option value="Low">Low Target</option>
+                  <option value="High" className="bg-brand-card">High Target</option>
+                  <option value="Medium" className="bg-brand-card">Medium Target</option>
+                  <option value="Low" className="bg-brand-card">Low Target</option>
                 </select>
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Description</label>
+                <label className="text-[10px] font-bold text-brand-text-muted uppercase block mb-1.5">Description</label>
                 <textarea
                   name="description"
                   rows="2"
                   value={formData.description}
                   onChange={handleChange}
                   placeholder="Details of the milestone achievements..."
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 focus:outline-none focus:border-primary/50 text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm"
                 />
               </div>
+              {editingMilestone && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-brand-text-muted uppercase block mb-1.5">Progress (%)</label>
+                    <input
+                      type="number"
+                      name="progress"
+                      min="0"
+                      max="100"
+                      value={formData.progress}
+                      onChange={handleChange}
+                      className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-brand-text-muted uppercase block mb-1.5">Status</label>
+                    <select
+                      name="status"
+                      value={formData.status}
+                      onChange={handleChange}
+                      className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm cursor-pointer"
+                    >
+                      <option value="Pending" className="bg-brand-card">Pending</option>
+                      <option value="Completed" className="bg-brand-card">Completed</option>
+                    </select>
+                  </div>
+                </div>
+              )}
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 mt-5">
+              <div className="flex justify-end gap-3 pt-3 border-t border-brand-border mt-5">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider transition-colors duration-300 focus:outline-none cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-xs uppercase tracking-wider transition-colors duration-300 focus:outline-none cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -232,7 +436,7 @@ const Milestones = ({ project, teamName, onUpdateMilestones }) => {
                   className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-xs uppercase tracking-wider hover:shadow-glow-primary transition-all duration-300 flex items-center gap-1.5 focus:outline-none cursor-pointer"
                 >
                   <FiCheck className="w-4 h-4" />
-                  <span>Create Milestone</span>
+                  <span>{editingMilestone ? 'Save Changes' : 'Create Milestone'}</span>
                 </button>
               </div>
 
@@ -240,6 +444,18 @@ const Milestones = ({ project, teamName, onUpdateMilestones }) => {
           </div>
         </>
       )}
+
+      {/* Global Confirm Modal */}
+      <ConfirmModal
+        isOpen={confirmModalState.isOpen}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
+        confirmText={confirmModalState.confirmText}
+        cancelText={confirmModalState.cancelText}
+        variant={confirmModalState.variant}
+        onConfirm={confirmModalState.onConfirm}
+        onCancel={() => setConfirmModalState(prev => ({ ...prev, isOpen: false }))}
+      />
 
     </div>
   );

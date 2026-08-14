@@ -9,22 +9,18 @@ const TeamOverviewTable = ({ teams = [], onViewTeam }) => {
     return 'bg-rose-500/10 text-rose-500 border-rose-500/20';
   };
 
-  const getRiskBadgeClass = (risk) => {
-    const r = risk.toLowerCase();
-    if (r.includes('low')) return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/10';
-    if (r.includes('med')) return 'bg-amber-500/10 text-amber-500 border-amber-500/10';
-    return 'bg-rose-500/10 text-rose-500 border-rose-500/10';
+  const getStatusFromHealth = (health) => {
+    const score = health !== undefined ? health : 100;
+    if (score >= 80) return 'VERY GOOD';
+    if (score >= 50) return 'MEDIUM';
+    return 'POOR';
   };
 
-  const getStatusBadgeClass = (status) => {
-    const s = status.toLowerCase();
-    if (s.includes('track') || s.includes('excel') || s.includes('good')) {
-      return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
-    }
-    if (s.includes('warn') || s.includes('poor') || s.includes('risk')) {
-      return 'bg-rose-500/10 text-rose-500 border-rose-500/20';
-    }
-    return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+  const getStatusBadgeClass = (health) => {
+    const score = health !== undefined ? health : 100;
+    if (score >= 80) return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
+    if (score >= 50) return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
+    return 'bg-rose-500/10 text-rose-500 border-rose-500/20';
   };
 
   return (
@@ -42,7 +38,6 @@ const TeamOverviewTable = ({ teams = [], onViewTeam }) => {
               <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-left">Team Name</th>
               <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-left">Project Name</th>
               <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-center">Health Score</th>
-              <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-center">Risk Level</th>
               <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-center">Status</th>
               <th className="px-6 py-4.5 text-xs font-bold text-brand-text-muted uppercase tracking-wider text-right">Actions</th>
             </tr>
@@ -73,16 +68,10 @@ const TeamOverviewTable = ({ teams = [], onViewTeam }) => {
                       {team.health}%
                     </span>
                   </td>
-                  {/* Risk Level */}
-                  <td className="px-6 py-4 text-center whitespace-nowrap">
-                    <span className={`inline-block px-2.5 py-0.5 rounded border text-[10px] font-bold tracking-wide uppercase ${getRiskBadgeClass(team.riskLevel || 'Low')}`}>
-                      {team.riskLevel || 'Low'}
-                    </span>
-                  </td>
                   {/* Status */}
                   <td className="px-6 py-4 text-center whitespace-nowrap">
-                    <span className={`inline-block px-2.5 py-0.5 rounded border text-[10px] font-bold tracking-wide uppercase ${getStatusBadgeClass(team.status)}`}>
-                      {team.status}
+                    <span className={`inline-block px-2.5 py-0.5 rounded border text-[10px] font-extrabold tracking-wide uppercase ${getStatusBadgeClass(team.health)}`}>
+                      {getStatusFromHealth(team.health)}
                     </span>
                   </td>
                   {/* Actions */}
@@ -100,7 +89,7 @@ const TeamOverviewTable = ({ teams = [], onViewTeam }) => {
               ))
             ) : (
               <tr>
-                <td colSpan="6" className="py-8 text-center text-xs text-brand-text-muted italic">
+                <td colSpan="5" className="py-8 text-center text-xs text-brand-text-muted italic">
                   No assigned teams found.
                 </td>
               </tr>

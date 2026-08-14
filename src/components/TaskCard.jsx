@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FiCheckSquare, FiChevronDown, FiChevronUp, FiClock, FiAlertCircle, FiFileText, FiDownload, FiEdit, FiTrash2 } from 'react-icons/fi';
+import { api } from '../utils/api';
 
 const TaskCard = ({ initialTasks = [], onNavigateToSubmitReport, onNavigateToEditReport, onUpdateTasks }) => {
   const [expanded, setExpanded] = useState(false);
@@ -18,9 +19,75 @@ const TaskCard = ({ initialTasks = [], onNavigateToSubmitReport, onNavigateToEdi
     setExpandedTaskId(prev => prev === taskId ? null : taskId);
   };
 
-  const handleDownload = (reportDetails) => {
-    setToast(`Downloading Report: ${reportDetails.week} - File: ${reportDetails.fileName || 'report.pdf'}`);
+  const handleDownload = async (reportDetails) => {
+    const titleText = reportDetails.week || reportDetails.title || 'Progress Update';
+    const fileName = reportDetails.fileName || 'report.pdf';
+    setToast(`Downloading Report: ${titleText} - File: ${fileName}`);
     setTimeout(() => setToast(null), 3500);
+
+    const fileUrl = reportDetails.fileUrl;
+    const fileId = reportDetails.fileId;
+
+    if (fileId || (fileUrl && fileUrl.startsWith('http'))) {
+      try {
+        const blob = await api.downloadFile(fileId || fileUrl);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return;
+      } catch (err) {
+        console.error('Failed to download file from backend:', err);
+      }
+    }
+
+    if (fileUrl && fileUrl.startsWith('data:')) {
+      try {
+        const parts = fileUrl.split(';base64,');
+        const contentType = parts[0].split(':')[1];
+        const raw = window.atob(parts[1]);
+        const rawLength = raw.length;
+        const uInt8Array = new Uint8Array(rawLength);
+        
+        for (let i = 0; i < rawLength; ++i) {
+          uInt8Array[i] = raw.charCodeAt(i);
+        }
+        
+        const blob = new Blob([uInt8Array], { type: contentType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return;
+      } catch (err) {
+        console.error('Failed to decode base64 file:', err);
+      }
+    }
+
+    let blob;
+    if (fileName.toLowerCase().endsWith('.pdf')) {
+      const pdfString = `%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n5 0 obj\n<< /Length 150 >>\nstream\nBT\n/F1 16 Tf\n50 750 Td\n(ProjectPilot - Mock Document) Tj\n/F1 12 Tf\n0 -40 Td\n(File: ${fileName}) Tj\n0 -20 Td\n(Subject: ${titleText}) Tj\nET\nendstream\nendobj\nxref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000244 00000 n \n0000000313 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n514\n%%EOF`;
+      blob = new Blob([pdfString], { type: 'application/pdf' });
+    } else {
+      const content = `ProjectPilot Report Document\n\nFile Name: ${fileName}\nReport Subject: ${titleText}\nDescription: ${reportDetails.description || 'No description provided.'}\n\nThis is a plain page document generated for the report.\n\nCreated on: ${new Date().toLocaleDateString()}`;
+      blob = new Blob([content], { type: 'text/plain' });
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleDeleteReport = (taskId) => {
@@ -252,27 +319,39 @@ const TaskCard = ({ initialTasks = [], onNavigateToSubmitReport, onNavigateToEdi
                               </p>
                             </div>
 
-                            {task.reportDetails.fileName && (
-                              <div className="pt-2 flex items-center justify-between gap-4 border-t border-brand-border/20 mt-2">
-                                <div className="flex items-center gap-1.5 text-brand-text font-semibold">
-                                  <FiFileText className="w-3.5 h-3.5 text-primary" />
-                                  <span className="truncate max-w-[150px]" title={task.reportDetails.fileName}>
-                                    {task.reportDetails.fileName}
-                                  </span>
-                                  <span className="text-[9px] text-brand-text-muted/65">({task.reportDetails.fileSize || 'N/A'})</span>
-                                </div>
-                                
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDownload(task.reportDetails)}
-                                    className="px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-brand-text hover:text-primary hover:bg-primary/10 border border-brand-border transition-all duration-300 font-bold text-[9px] uppercase flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <FiDownload className="w-3 h-3" /> Download
-                                  </button>
+                            {/* Render attachments & actions */}
+                            {(() => {
+                              const files = task.reportDetails.files && Array.isArray(task.reportDetails.files) ? task.reportDetails.files : (
+                                task.reportDetails.fileName ? [{
+                                  fileName: task.reportDetails.fileName,
+                                  fileSize: task.reportDetails.fileSize,
+                                  fileUrl: task.reportDetails.fileUrl,
+                                  fileId: task.reportDetails.fileId
+                                }] : []
+                              );
+                              return (
+                                <div className="space-y-2 mt-2 pt-2 border-t border-brand-border/20">
+                                  {files.map((file, idx) => (
+                                    <div key={idx} className="flex items-center justify-between gap-4">
+                                      <div className="flex items-center gap-1.5 text-brand-text font-semibold truncate pr-2 text-xs">
+                                        <FiFileText className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
+                                        <span className="truncate max-w-[150px]" title={file.fileName}>
+                                          {file.fileName}
+                                        </span>
+                                        <span className="text-[9px] text-brand-text-muted/65 shrink-0">({file.fileSize || 'N/A'})</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDownload(file)}
+                                        className="px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-brand-text hover:text-primary hover:bg-primary/10 border border-brand-border transition-all duration-300 font-bold text-[9px] uppercase flex items-center gap-1 cursor-pointer shrink-0"
+                                      >
+                                        <FiDownload className="w-3 h-3" /> Download
+                                      </button>
+                                    </div>
+                                  ))}
                                   
                                   {!isApproved && (
-                                    <>
+                                    <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-brand-border/10">
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -291,11 +370,11 @@ const TaskCard = ({ initialTasks = [], onNavigateToSubmitReport, onNavigateToEdi
                                       >
                                         <FiTrash2 className="w-3 h-3" /> Delete
                                       </button>
-                                    </>
+                                    </div>
                                   )}
                                 </div>
-                              </div>
-                            )}
+                              );
+                            })()}
                           </div>
                         ) : (
                           <div className="text-center py-2 text-brand-text-muted italic">

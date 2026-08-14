@@ -1,6 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { FiArrowLeft, FiTrash2, FiCheckCircle, FiInfo, FiAlertTriangle, FiAlertOctagon } from 'react-icons/fi';
 
+const getNotificationTimestamp = (notif) => {
+  if (!notif) return 0;
+  let baseDate = notif.date ? new Date(notif.date) : new Date();
+  if (isNaN(baseDate.getTime())) {
+    baseDate = new Date();
+  }
+  const timeStr = notif.time || '';
+  const ampmMatch = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+  if (ampmMatch) {
+    let hours = parseInt(ampmMatch[1], 10);
+    const minutes = parseInt(ampmMatch[2], 10);
+    const ampm = ampmMatch[3];
+    if (ampm) {
+      if (ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
+      if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+    }
+    baseDate.setHours(hours, minutes, 0, 0);
+  } else if (timeStr.toLowerCase().includes('just now')) {
+    baseDate.setHours(23, 59, 59, 999);
+  } else if (timeStr.toLowerCase().includes('ago')) {
+    baseDate.setHours(12, 0, 0, 0);
+  }
+  return baseDate.getTime();
+};
+
 const NotificationsPage = ({ notifications = [], onClearAll, onBack }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -34,15 +59,45 @@ const NotificationsPage = ({ notifications = [], onClearAll, onBack }) => {
     }
   };
 
-  const totalPages = Math.ceil(notifications.length / itemsPerPage);
+  const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+  const userEmail = currentUser.email || 'default';
+  const notifPrefs = JSON.parse(localStorage.getItem(`notifPrefs_${userEmail.toLowerCase()}`) || '{}');
+
+  const filteredNotifications = (notifications || []).filter((notif) => {
+    if (!notif) return false;
+    const titleLower = (notif.title || '').toLowerCase();
+    const msgLower = (notif.message || '').toLowerCase();
+
+    // Check feedback notifications
+    if (notifPrefs.feedbackNotifications === false) {
+      if (titleLower.includes('feedback') || titleLower.includes('review') || titleLower.includes('comment') || msgLower.includes('feedback') || msgLower.includes('graded')) {
+        return false;
+      }
+    }
+
+    // Check deadline / report due alerts
+    if (notifPrefs.reportDueAlerts === false) {
+      if (titleLower.includes('reminder') || titleLower.includes('deadline') || titleLower.includes('due') || msgLower.includes('deadline') || msgLower.includes('due')) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  const sortedNotifications = [...filteredNotifications].sort((a, b) => {
+    return getNotificationTimestamp(b) - getNotificationTimestamp(a);
+  });
+
+  const totalPages = Math.ceil(sortedNotifications.length / itemsPerPage);
 
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {
       setCurrentPage(1);
     }
-  }, [notifications.length, totalPages]);
+  }, [sortedNotifications.length, totalPages, currentPage]);
 
-  const paginatedNotifications = notifications.slice(
+  const paginatedNotifications = sortedNotifications.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
@@ -70,7 +125,7 @@ const NotificationsPage = ({ notifications = [], onClearAll, onBack }) => {
           </div>
         </div>
 
-        {notifications.length > 0 && (
+        {filteredNotifications.length > 0 && (
           <button
             onClick={() => {
               setDeleteConfirm({
@@ -78,6 +133,7 @@ const NotificationsPage = ({ notifications = [], onClearAll, onBack }) => {
                 message: 'Are you sure you want to clear your entire notification history?',
                 onConfirm: () => {
                   onClearAll();
+                  setDeleteConfirm(null);
                 }
               });
             }}
@@ -93,7 +149,7 @@ const NotificationsPage = ({ notifications = [], onClearAll, onBack }) => {
       <div className="p-6 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-md space-y-6">
         {paginatedNotifications.length > 0 ? (
           <div className="space-y-3.5">
-            {paginatedNotifications.map((notif, idx) => (
+            {paginatedNotifications.map((notif) => (
               <div
                 key={notif.id}
                 className={`p-4 rounded-xl border transition-all duration-300 flex items-start gap-4 ${getBorderColorClass(notif.type)}`}

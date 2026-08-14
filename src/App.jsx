@@ -70,7 +70,7 @@ function App() {
             fullName: u.name,
             email: u.email,
             role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
-            collegeName: 'ProjectPilot University',
+            collegeName: u.collegeName || '',
             department: u.department || 'Computer Science & Engineering',
             status: 'Active',
             team: u.team || 'Not Assigned'
@@ -85,6 +85,8 @@ function App() {
             if (myUserRecord) {
               if (myUserRecord.fullName) currentUser.fullName = myUserRecord.fullName;
               currentUser.team = myUserRecord.team || 'Not Assigned';
+              currentUser.collegeName = myUserRecord.collegeName || currentUser.collegeName || '';
+              currentUser.department = myUserRecord.department || currentUser.department || 'Computer Science & Engineering';
               localStorage.setItem('currentUser', JSON.stringify(currentUser));
             }
           }

@@ -35,6 +35,37 @@ const ReportCard = ({ report, onReview }) => {
           <span>•</span>
           <span>Submitted: {report.submittedDate}</span>
         </div>
+
+        {/* AI Integrity quick indicator */}
+        <div className="mt-3 pt-2.5 border-t border-brand-border/20 flex flex-wrap gap-4 items-center">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] font-extrabold uppercase text-brand-text-muted">Similarity:</span>
+            <span className={`text-[11px] font-extrabold px-1.5 py-0.5 rounded border ${
+              (report.similarityScore || 0) >= 30 
+                ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 animate-pulse' 
+                : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+            }`}>
+              {report.similarityScore || 0}%
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] font-extrabold uppercase text-brand-text-muted">AI Text:</span>
+            <span className={`text-[11px] font-extrabold px-1.5 py-0.5 rounded border ${
+              (report.aiGeneratedScore || 0) >= 70 
+                ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 animate-pulse' 
+                : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+            }`}>
+              {report.aiGeneratedScore || 0}%
+            </span>
+          </div>
+          
+          {((report.similarityScore || 0) >= 30 || (report.aiGeneratedScore || 0) >= 70) && (
+            <span className="text-[8px] font-bold text-rose-500 animate-pulse">
+              ⚠️ Plagiarism/AI Alert
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Button */}

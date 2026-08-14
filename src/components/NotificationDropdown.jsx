@@ -4,8 +4,64 @@ import {
   FiAlertOctagon, FiArrowRight, FiX 
 } from 'react-icons/fi';
 
+const getNotificationTimestamp = (notif) => {
+  if (!notif) return 0;
+  let baseDate = notif.date ? new Date(notif.date) : new Date();
+  if (isNaN(baseDate.getTime())) {
+    baseDate = new Date();
+  }
+  const timeStr = notif.time || '';
+  const ampmMatch = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+  if (ampmMatch) {
+    let hours = parseInt(ampmMatch[1], 10);
+    const minutes = parseInt(ampmMatch[2], 10);
+    const ampm = ampmMatch[3];
+    if (ampm) {
+      if (ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
+      if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+    }
+    baseDate.setHours(hours, minutes, 0, 0);
+  } else if (timeStr.toLowerCase().includes('just now')) {
+    baseDate.setHours(23, 59, 59, 999);
+  } else if (timeStr.toLowerCase().includes('ago')) {
+    baseDate.setHours(12, 0, 0, 0);
+  }
+  return baseDate.getTime();
+};
+
 const NotificationDropdown = ({ isOpen, onClose, notifications, onSeeAll }) => {
   if (!isOpen) return null;
+
+  const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+  const userEmail = currentUser.email || 'default';
+  const notifPrefs = JSON.parse(localStorage.getItem(`notifPrefs_${userEmail.toLowerCase()}`) || '{}');
+
+  const filteredNotifications = notifications.filter((notif) => {
+    if (!notif) return false;
+    const titleLower = (notif.title || '').toLowerCase();
+    const msgLower = (notif.message || '').toLowerCase();
+
+    // Check feedback notifications
+    if (notifPrefs.feedbackNotifications === false) {
+      if (titleLower.includes('feedback') || titleLower.includes('review') || titleLower.includes('comment') || msgLower.includes('feedback') || msgLower.includes('graded')) {
+        return false;
+      }
+    }
+
+    // Check deadline / report due alerts
+    if (notifPrefs.reportDueAlerts === false) {
+      if (titleLower.includes('reminder') || titleLower.includes('deadline') || titleLower.includes('due') || msgLower.includes('deadline') || msgLower.includes('due')) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  const sortedNotifications = [...filteredNotifications].sort((a, b) => {
+    return getNotificationTimestamp(b) - getNotificationTimestamp(a);
+  });
+  const displayedNotifications = sortedNotifications.slice(0, 5);
 
   const getIcon = (type) => {
     switch (type) {
@@ -57,8 +113,8 @@ const NotificationDropdown = ({ isOpen, onClose, notifications, onSeeAll }) => {
 
       {/* List */}
       <div className="max-h-[280px] overflow-y-auto space-y-3 pr-0.5 custom-scrollbar">
-        {notifications.length > 0 ? (
-          notifications.map((notif) => (
+        {displayedNotifications.length > 0 ? (
+          displayedNotifications.map((notif) => (
             <div
               key={notif.id}
               className="p-3 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/25 hover:bg-slate-100/50 dark:hover:bg-slate-900/55 transition-colors duration-300 flex items-start gap-3.5 cursor-pointer"

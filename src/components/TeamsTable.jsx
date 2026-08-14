@@ -20,15 +20,20 @@ const TeamsTable = ({
     }
   };
 
+  const getStatusFromHealth = (health) => {
+    const score = health !== undefined ? health : 100;
+    if (score >= 80) return 'VERY GOOD';
+    if (score >= 50) return 'MEDIUM';
+    return 'POOR';
+  };
+
   const getStatusBadgeClass = (score) => {
-    if (score >= 95) {
-      return 'text-primary bg-primary/10 border border-primary/25';
-    } else if (score >= 80) {
-      return 'text-primary/95 bg-primary/8 border border-primary/20';
-    } else if (score >= 60) {
-      return 'text-primary/90 bg-primary/6 border border-primary/15';
+    if (score >= 80) {
+      return 'text-emerald-500 bg-emerald-500/10 border border-emerald-500/25 font-bold';
+    } else if (score >= 50) {
+      return 'text-amber-500 bg-amber-500/10 border border-amber-500/20 font-semibold';
     } else {
-      return 'text-primary/80 bg-primary/4 border border-primary/10';
+      return 'text-rose-500 bg-rose-500/10 border border-rose-500/15 font-normal';
     }
   };
 
@@ -132,7 +137,7 @@ const TeamsTable = ({
                 {/* Status */}
                 <td className="px-6 py-4">
                   <span className={`inline-block px-2.5 py-0.5 rounded-lg text-xs font-bold ${getStatusBadgeClass(team.health)}`}>
-                    {team.status}
+                    {getStatusFromHealth(team.health)}
                   </span>
                 </td>
 

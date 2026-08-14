@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { FiMail, FiLock, FiEye, FiEyeOff, FiChevronDown, FiAlertCircle } from 'react-icons/fi';
+import React, { useState } from 'react';
+import { FiMail, FiLock, FiEye, FiEyeOff, FiAlertCircle } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
 import { api } from '../utils/api';
 
@@ -38,7 +38,7 @@ const LoginForm = () => {
     const passwordVal = formData.password;
 
     if (!inputVal) {
-      newErrors.usernameOrEmail = 'Username or Email is required.';
+      newErrors.usernameOrEmail = 'Email address is required.';
     }
 
     if (!passwordVal) {
@@ -70,17 +70,19 @@ const LoginForm = () => {
           fullName: u.name,
           email: u.email,
           role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
-          collegeName: 'ProjectPilot University',
+          collegeName: u.collegeName || '',
           department: u.department || 'Computer Science & Engineering',
           status: 'Active',
           team: u.team || 'Not Assigned'
         }));
         localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
 
-        // Sync the logged-in currentUser's team details
+        // Sync the logged-in currentUser's details
         const myUserRecord = mappedUsers.find(u => u.email.toLowerCase() === user.email?.toLowerCase());
         if (myUserRecord) {
           user.team = myUserRecord.team || 'Not Assigned';
+          user.collegeName = myUserRecord.collegeName || user.collegeName || '';
+          user.department = myUserRecord.department || user.department || 'Computer Science & Engineering';
           localStorage.setItem('currentUser', JSON.stringify(user));
         }
       } catch (err) {
@@ -114,10 +116,13 @@ const LoginForm = () => {
             friendlyMessage = parsed.error;
           }
         }
-      } catch (e) {
+      } catch {
         if (err.message && !err.message.includes('{')) {
           friendlyMessage = err.message;
         }
+      }
+      if (friendlyMessage.toLowerCase() === 'forbidden' || friendlyMessage.toLowerCase() === 'unauthorized') {
+        friendlyMessage = 'Invalid email or password. Please try again.';
       }
       setErrors({ global: friendlyMessage });
     }
@@ -146,25 +151,23 @@ const LoginForm = () => {
     setSuccessMessage('');
   };
 
-  const handlePasswordResetSubmit = (e) => {
+  const handlePasswordResetSubmit = async (e) => {
     e.preventDefault();
     const newErrors = {};
 
     const inputVal = formData.usernameOrEmail.trim().toLowerCase();
-    const newPasswordVal = formData.newPassword;
-    const confirmPasswordVal = formData.confirmPassword;
+    const newPassVal = formData.newPassword;
+    const confirmPassVal = formData.confirmPassword;
 
     if (!inputVal) {
-      newErrors.usernameOrEmail = 'Username or Email is required.';
+      newErrors.usernameOrEmail = 'Email address is required.';
     }
-
-    if (!newPasswordVal) {
+    if (!newPassVal) {
       newErrors.newPassword = 'New Password is required.';
     }
-
-    if (!confirmPasswordVal) {
+    if (!confirmPassVal) {
       newErrors.confirmPassword = 'Confirm Password is required.';
-    } else if (newPasswordVal !== confirmPasswordVal) {
+    } else if (newPassVal && newPassVal !== confirmPassVal) {
       newErrors.confirmPassword = 'Passwords do not match.';
     }
 
@@ -174,36 +177,43 @@ const LoginForm = () => {
     }
 
     try {
-      const storedUsers = localStorage.getItem('registeredUsers');
-      if (storedUsers) {
-        const users = JSON.parse(storedUsers);
-        const userIdx = users.findIndex(u => 
-          u.email.toLowerCase() === inputVal || 
-          u.fullName.toLowerCase().replace(/\s+/g, '_') === inputVal
-        );
+      const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+      const userIndex = registeredUsers.findIndex(
+        (u) =>
+          (u.email && u.email.toLowerCase() === inputVal) ||
+          (u.username && u.username.toLowerCase() === inputVal)
+      );
 
-        if (userIdx !== -1) {
-          users[userIdx].password = newPasswordVal;
-          localStorage.setItem('registeredUsers', JSON.stringify(users));
-          
-          setSuccessMessage('Password reset successfully! Please log in with your new password.');
-          setIsForgotPasswordMode(false);
-          setFormData({
-            usernameOrEmail: inputVal,
-            password: '',
-            newPassword: '',
-            confirmPassword: ''
-          });
-          setErrors({});
-        } else {
-          setErrors({ global: 'User not found. Please enter a valid registered username or email.' });
-        }
-      } else {
-        setErrors({ global: 'No registered users found in database.' });
+      if (userIndex === -1) {
+        setErrors({ usernameOrEmail: 'No user account found matching this email address.' });
+        return;
       }
-    } catch (err) {
-      console.error(err);
-      setErrors({ global: 'An error occurred during password reset.' });
+
+      registeredUsers[userIndex].password = newPassVal;
+      localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
+
+      // Attempt to sync updated password to backend
+      try {
+        const targetUser = registeredUsers[userIndex];
+        await api.updateUserProfile(targetUser.id, {
+          name: targetUser.fullName || targetUser.name,
+          email: targetUser.email,
+          role: targetUser.role === 'Team Leader' ? 'TEAM_LEADER' : targetUser.role === 'Mentor' ? 'MENTOR' : 'STUDENT',
+          department: targetUser.department || 'Computer Science & Engineering',
+          team: targetUser.team || 'Not Assigned',
+          collegeName: targetUser.collegeName || '',
+          password: newPassVal
+        });
+      } catch (backendErr) {
+        console.warn('Backend password reset sync warning:', backendErr);
+      }
+
+      setSuccessMessage('Your password has been successfully reset. Please sign in with your new password.');
+      setIsForgotPasswordMode(false);
+      setFormData({ usernameOrEmail: '', password: '', newPassword: '', confirmPassword: '' });
+      setErrors({});
+    } catch {
+      setErrors({ global: 'Password reset service encountered an issue. Please try again.' });
     }
   };
 
@@ -219,19 +229,19 @@ const LoginForm = () => {
           </div>
         )}
 
-        {/* Username or Email Address Field */}
+        {/* Email Address Field */}
         <div>
           <label className="text-xs font-bold uppercase tracking-wider text-brand-text-muted mb-2 block">
-            Registered Username or Email
+            Email Address
           </label>
           <div className="relative">
             <FiMail className="w-5 h-5 absolute left-3.5 top-1/2 transform -translate-y-1/2 text-brand-text-muted/50" />
             <input
-              type="text"
+              type="email"
               name="usernameOrEmail"
               value={formData.usernameOrEmail}
               onChange={handleChange}
-              placeholder="Enter your username or email address"
+              placeholder="Enter your email address"
               className={`w-full pl-11 pr-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-900/30 text-brand-text placeholder-brand-text-muted/40 focus:outline-none focus:ring-1 transition-all duration-300 ${
                 errors.usernameOrEmail
                   ? 'border-rose-500/50 focus:border-rose-500 focus:ring-rose-500/30'
@@ -360,19 +370,19 @@ const LoginForm = () => {
         </div>
       )}
 
-      {/* Username or Email Address Field */}
+      {/* Email Address Field */}
       <div>
         <label className="text-xs font-bold uppercase tracking-wider text-brand-text-muted mb-2 block">
-          Username or Email Address
+          Email Address
         </label>
         <div className="relative">
           <FiMail className="w-5 h-5 absolute left-3.5 top-1/2 transform -translate-y-1/2 text-brand-text-muted/50" />
           <input
-            type="text"
+            type="email"
             name="usernameOrEmail"
             value={formData.usernameOrEmail}
             onChange={handleChange}
-            placeholder="Enter your username or email address"
+            placeholder="Enter your email address"
             className={`w-full pl-11 pr-4 py-3 rounded-xl border bg-slate-50 dark:bg-slate-900/30 text-brand-text placeholder-brand-text-muted/40 focus:outline-none focus:ring-1 transition-all duration-300 ${
               errors.usernameOrEmail
                 ? 'border-rose-500/50 focus:border-rose-500 focus:ring-rose-500/30'

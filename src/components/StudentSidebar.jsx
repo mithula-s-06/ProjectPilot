@@ -1,7 +1,6 @@
 import { 
   FiHome, FiFolder, FiSettings, FiUser, 
-  FiLogOut, FiChevronLeft, FiChevronRight, FiUsers,
-  FiCpu
+  FiLogOut, FiChevronLeft, FiChevronRight, FiUsers
 } from 'react-icons/fi';
 
 const StudentSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLogout }) => {
@@ -10,7 +9,6 @@ const StudentSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLo
     { id: 'dashboard', label: 'Dashboard', icon: <FiHome className="w-5 h-5" /> },
     { id: 'projects', label: 'Projects', icon: <FiFolder className="w-5 h-5" /> },
     { id: 'members', label: 'Team Members', icon: <FiUsers className="w-5 h-5" /> },
-    { id: 'chat-guru', label: 'Chat Guru', icon: <FiCpu className="w-5 h-5 text-indigo-500" /> },
   ];
 
   const bottomMenuItems = [
@@ -49,19 +47,19 @@ const StudentSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLo
       }`}
     >
       {/* Top Menu List */}
-      <div className="space-y-2">
+      <div className="space-y-2 pt-1">
         {mainMenuItems.map(renderMenuItem)}
       </div>
 
       {/* Bottom Menu List */}
-      <div className="space-y-6">
-        <div className="space-y-2">
+      <div className="space-y-4 pb-8 flex-shrink-0">
+        <div className="space-y-2 border-t border-brand-border/40 pt-4">
           {bottomMenuItems.map(renderMenuItem)}
           
           {/* Logout */}
           <button
             onClick={onLogout}
-            className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl text-sm font-semibold text-rose-500 hover:bg-rose-500/10 transition-all duration-300 group"
+            className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl text-sm font-semibold text-rose-500 hover:bg-rose-500/10 transition-all duration-300 group cursor-pointer"
           >
             <div className="transition-transform duration-300 group-hover:translate-x-0.5">
               <FiLogOut className="w-5 h-5" />
@@ -71,16 +69,6 @@ const StudentSidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLo
                 Logout
               </span>
             )}
-          </button>
-        </div>
-
-        {/* Expand/Collapse sidebar trigger */}
-        <div className="border-t border-brand-border pt-4 flex justify-end">
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="p-1.5 rounded-lg border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors duration-300 focus:outline-none"
-          >
-            {collapsed ? <FiChevronRight className="w-4 h-4" /> : <FiChevronLeft className="w-4 h-4" />}
           </button>
         </div>
       </div>

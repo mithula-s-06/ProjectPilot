@@ -1,12 +1,22 @@
 import React, { useState } from 'react';
 import { FiPlus, FiX, FiCheck, FiArrowLeft } from 'react-icons/fi';
 import TeamMemberCard from '../components/TeamMemberCard';
-import { api } from '../utils/api';
+import { api, addNotification } from '../utils/api';
+import ConfirmModal from '../components/ConfirmModal';
 
 const TeamMembers = ({ readOnly = false, projects = [] }) => {
   const [selectedProject, setSelectedProject] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [confirmModalState, setConfirmModalState] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    variant: 'primary',
+    onConfirm: () => {},
+  });
   const [members, setMembers] = useState(() => {
     try {
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
@@ -145,10 +155,15 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
   };
 
   const handleDeleteMember = (memberToDelete) => {
-    setDeleteConfirm({
-      type: 'member',
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Remove Team Member?',
       message: `Are you sure you want to remove "${memberToDelete.name}" from the team?`,
+      confirmText: 'Remove Member',
+      cancelText: 'Cancel',
+      variant: 'danger',
       onConfirm: () => {
+        setConfirmModalState(prev => ({ ...prev, isOpen: false }));
         try {
           const stored = localStorage.getItem('registeredUsers');
           if (stored) {
@@ -171,10 +186,21 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
                  email: matchedUser.email,
                  role: matchedUser.role === 'Team Leader' ? 'TEAM_LEADER' : matchedUser.role === 'Mentor' ? 'MENTOR' : 'STUDENT',
                  department: matchedUser.department || 'Computer Science & Engineering',
-                 salary: matchedUser.salary || 50000.0,
-                 joinDate: matchedUser.joinDate || new Date().toISOString().split('T')[0],
-                 team: updatedTeamString
+                 team: updatedTeamString,
+                 collegeName: matchedUser.collegeName || ''
                }).catch(err => console.warn('Failed to sync deleted member profile:', err));
+
+               try {
+                 addNotification(
+                   'Removed from Team',
+                   `You have been removed from team "${teamName}".`,
+                   matchedUser.email,
+                   teamName,
+                   'warning'
+                 );
+               } catch (err) {
+                 console.error('Failed to dispatch removed from team notification:', err);
+               }
               
               setMembers(prev => prev.filter(m => m.email.toLowerCase() !== memberToDelete.email.toLowerCase()));
               
@@ -217,9 +243,8 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
             email: matchedUser.email,
             role: matchedUser.role === 'Team Leader' ? 'TEAM_LEADER' : matchedUser.role === 'Mentor' ? 'MENTOR' : 'STUDENT',
             department: matchedUser.department || 'Computer Science & Engineering',
-            salary: matchedUser.salary || 50000.0,
-            joinDate: matchedUser.joinDate || new Date().toISOString().split('T')[0],
-            team: matchedUser.team
+            team: matchedUser.team,
+            collegeName: matchedUser.collegeName || ''
           }).catch(err => console.warn('Failed to sync edited member profile:', err));
 
           const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
@@ -320,10 +345,21 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
         email: matchedUser.email,
         role: matchedUser.role === 'Team Leader' ? 'TEAM_LEADER' : matchedUser.role === 'Mentor' ? 'MENTOR' : 'STUDENT',
         department: matchedUser.department || 'Computer Science & Engineering',
-        salary: matchedUser.salary || 50000.0,
-        joinDate: matchedUser.joinDate || new Date().toISOString().split('T')[0],
-        team: updatedTeamString
+        team: updatedTeamString,
+        collegeName: matchedUser.collegeName || ''
       }).catch(err => console.warn('Failed to sync assigned member profile:', err));
+
+      try {
+        addNotification(
+          'Added to Team',
+          `You have been added to team "${targetTeamName}".`,
+          matchedUser.email,
+          targetTeamName,
+          'success'
+        );
+      } catch (err) {
+        console.error('Failed to dispatch added to team notification:', err);
+      }
 
       setMembers(prev => [
         ...prev,
@@ -380,6 +416,9 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
                   <div>
                     <h4 className="text-sm font-extrabold text-brand-text">{proj.name}</h4>
                     <span className="text-[10px] text-brand-text-muted font-semibold block mt-0.5">{proj.domain}</span>
+                    <span className="text-[10px] text-brand-text-muted/75 font-bold block mt-1">
+                      Team Name: <strong className="text-brand-text">{proj.teamName || 'Not Assigned'}</strong>
+                    </span>
                   </div>
                   <p className="text-xs text-brand-text-muted/80 line-clamp-2 leading-relaxed">
                     {proj.description}
@@ -611,19 +650,7 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
                 )}
               </div>
 
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Work Contribution Share (%)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={editFormData.contribution}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, contribution: e.target.value }))}
-                  placeholder="Contribution percentage"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 focus:outline-none focus:border-primary/50 text-sm"
-                  required
-                />
-              </div>
+
 
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">Assignments (Comma-separated)</label>
@@ -659,48 +686,17 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
         </>
       )}
       
-      {deleteConfirm && (
-        <>
-          <div 
-            onClick={() => setDeleteConfirm(null)} 
-            className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[9999] transition-opacity duration-300 animate-fade-in" 
-          />
-          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[calc(100vw-32px)] max-w-[400px] rounded-3xl border border-brand-border bg-brand-card shadow-2xl p-6 z-[10000] text-center animate-scale-up">
-            <div className="flex flex-col items-center gap-4">
-              <div className="p-3.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 mb-2">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </div>
-              <h3 className="text-base font-extrabold text-brand-text">
-                Confirm Deletion
-              </h3>
-              <p className="text-xs text-brand-text-muted leading-relaxed max-w-xs">
-                {deleteConfirm.message}
-              </p>
-              <div className="flex items-center gap-3 w-full mt-4">
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 py-3 px-4 rounded-xl border border-brand-border bg-brand-card text-brand-text font-bold text-xs uppercase tracking-wider transition-all duration-300 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    deleteConfirm.onConfirm();
-                    setDeleteConfirm(null);
-                  }}
-                  className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-rose-500 to-red-600 text-white hover:brightness-110 font-bold text-xs uppercase tracking-wider shadow-md transition-all duration-300 cursor-pointer"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+      {/* Global Confirmation Modal */}
+      <ConfirmModal
+        isOpen={confirmModalState.isOpen}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
+        confirmText={confirmModalState.confirmText}
+        cancelText={confirmModalState.cancelText}
+        variant={confirmModalState.variant}
+        onConfirm={confirmModalState.onConfirm}
+        onCancel={() => setConfirmModalState(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };
