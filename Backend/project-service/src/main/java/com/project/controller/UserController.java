@@ -6,7 +6,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import com.project.entity.DBFile;
+import com.project.repository.DBFileRepository;
+import com.project.service.GeminiService;
+import org.springframework.beans.factory.annotation.Autowired;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Collections;
 
 /**
  * Was a browser-facing @Controller returning JSP view names
@@ -24,8 +31,37 @@ public class UserController {
 
     private final UserService userService;
 
+    @Autowired
+    private GeminiService geminiService;
+
+    @Autowired
+    private DBFileRepository dbFileRepository;
+
     public UserController(UserService userService) {
         this.userService = userService;
+    }
+
+    @PostMapping("/extract-skills")
+    public ResponseEntity<?> extractSkills(@RequestBody Map<String, String> request) {
+        String fileId = request.get("fileId");
+        if (fileId == null || fileId.isEmpty()) {
+            return ResponseEntity.badRequest().body(Collections.singletonMap("error", "fileId is required"));
+        }
+
+        DBFile dbFile = dbFileRepository.findById(fileId).orElse(null);
+        if (dbFile == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        try {
+            List<String> skills = geminiService.extractSkills(dbFile.getData(), dbFile.getContentType(), dbFile.getFileName());
+            Map<String, Object> response = new HashMap<>();
+            response.put("skills", skills);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            System.err.println("Skill extraction failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(Collections.singletonMap("error", "Failed to extract skills: " + e.getMessage()));
+        }
     }
 
     @GetMapping

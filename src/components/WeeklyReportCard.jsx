@@ -169,13 +169,13 @@ const WeeklyReportCard = ({ weeklyReports = [], projectStatus }) => {
                       <div className="mt-2.5 pt-2 border-t border-brand-border/10 grid grid-cols-2 gap-4">
                         <div>
                           <span className="text-[8px] font-extrabold text-brand-text-muted uppercase block">Similarity Score</span>
-                          <span className={`text-[11px] font-extrabold ${(report.similarityScore || 0) >= 30 ? 'text-rose-500 animate-pulse' : 'text-emerald-500'}`}>
+                          <span className={`text-[11px] font-extrabold ${(report.similarityScore || 0) >= 50 ? 'text-rose-500 animate-pulse' : 'text-emerald-500'}`}>
                             {report.similarityScore || 0}%
                           </span>
                         </div>
                         <div>
                           <span className="text-[8px] font-extrabold text-brand-text-muted uppercase block">AI Probability</span>
-                          <span className={`text-[11px] font-extrabold ${(report.aiGeneratedScore || 0) >= 70 ? 'text-rose-500 animate-pulse' : 'text-emerald-500'}`}>
+                          <span className={`text-[11px] font-extrabold ${(report.aiGeneratedScore || 0) >= 60 ? 'text-rose-500 animate-pulse' : 'text-emerald-500'}`}>
                             {report.aiGeneratedScore || 0}%
                           </span>
                         </div>

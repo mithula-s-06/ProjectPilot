@@ -50,6 +50,8 @@ function mapProjectToFrontend(p) {
     tasks: p.tasks || [],
     milestones: p.milestones || [],
     weeklyReports: p.weeklyReports || [],
+    documents: p.documents || [],
+    referenceLinks: p.referenceLinks || [],
     github: {
       repoUrl: p.repoUrl || '',
       commits: p.commits !== undefined ? p.commits : 0,
@@ -92,11 +94,14 @@ function mapProjectToBackend(p) {
     teamName: p.teamName,
     tasks: p.tasks || [],
     milestones: p.milestones || [],
-    weeklyReports: p.weeklyReports || []
+    weeklyReports: p.weeklyReports || [],
+    documents: p.documents || [],
+    referenceLinks: p.referenceLinks || []
   };
 }
 
 export const api = {
+  PROJECT_URL,
   // Authentication & Users (auth-service)
   async login(email, password, department = null, collegeName = null) {
     const data = await request(`${AUTH_URL}/api/auth/login`, {
@@ -159,7 +164,7 @@ export const api = {
     throw new Error('Invalid token returned');
   },
 
-  async register(name, email, password, role, department = 'Computer Science & Engineering', collegeName = '') {
+  async register(name, email, password, role, department = 'Computer Science & Engineering', collegeName = '', yearOfStudy = '', resumeId = '', resumeName = '', resumeUrl = '', skills = []) {
     // 1. Register in auth-service (MySQL)
     const authRole = role === 'Team Leader' ? 'TEAM_LEADER' 
                    : role === 'Mentor' ? 'MENTOR' 
@@ -190,8 +195,9 @@ export const api = {
         headers: { 'Authorization': `Bearer ${loginData.token}` }
       });
       const existingUser = (users || []).find(u => u.email.toLowerCase() === email.toLowerCase());
+      let finalProfile = null;
       if (!existingUser) {
-        await request(`${PROJECT_URL}/api/users`, {
+        finalProfile = await request(`${PROJECT_URL}/api/users`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${loginData.token}` },
           body: JSON.stringify({
@@ -199,12 +205,17 @@ export const api = {
             email,
             role: authRole,
             department,
-            collegeName
+            collegeName,
+            yearOfStudy,
+            resumeId,
+            resumeName,
+            resumeUrl,
+            skills
           }),
         });
       } else {
         // If profile exists, ensure collegeName and department are up to date from signup form
-        await request(`${PROJECT_URL}/api/users/${existingUser.id}`, {
+        finalProfile = await request(`${PROJECT_URL}/api/users/${existingUser.id}`, {
           method: 'PUT',
           headers: { 'Authorization': `Bearer ${loginData.token}` },
           body: JSON.stringify({
@@ -212,9 +223,30 @@ export const api = {
             name,
             collegeName: collegeName || existingUser.collegeName,
             department: department || existingUser.department,
-            role: authRole
+            role: authRole,
+            yearOfStudy: yearOfStudy || existingUser.yearOfStudy,
+            resumeId: resumeId || existingUser.resumeId,
+            resumeName: resumeName || existingUser.resumeName,
+            resumeUrl: resumeUrl || existingUser.resumeUrl,
+            skills: skills && skills.length > 0 ? skills : existingUser.skills
           }),
         });
+      }
+
+      if (finalProfile) {
+        const storedUser = localStorage.getItem('currentUser');
+        if (storedUser) {
+          const currentUser = JSON.parse(storedUser);
+          currentUser.team = finalProfile.team || currentUser.team || 'Not Assigned';
+          currentUser.collegeName = finalProfile.collegeName || currentUser.collegeName || '';
+          currentUser.department = finalProfile.department || currentUser.department || 'Computer Science & Engineering';
+          currentUser.yearOfStudy = finalProfile.yearOfStudy || '';
+          currentUser.resumeId = finalProfile.resumeId || '';
+          currentUser.resumeName = finalProfile.resumeName || '';
+          currentUser.resumeUrl = finalProfile.resumeUrl || '';
+          currentUser.skills = finalProfile.skills || [];
+          localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        }
       }
     } catch (err) {
       console.warn('Auto profile syncing to project-service failed:', err);
@@ -256,6 +288,10 @@ export const api = {
   async listProjects() {
     const data = await request(`${PROJECT_URL}/api/projects`);
     return (data || []).map(mapProjectToFrontend);
+  },
+
+  async listAllSubmissions() {
+    return await request(`${PROJECT_URL}/api/projects/submissions`);
   },
 
   async getProjectById(id) {
@@ -374,9 +410,37 @@ export const api = {
     };
   },
 
+  async extractSkills(fileId) {
+    if (!fileId) {
+      throw new Error('No file ID provided for skill extraction');
+    }
+    const response = await fetch(
+      `${PROJECT_URL}/api/users/extract-skills`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ fileId })
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Skills extraction failed');
+    }
+    const data = await response.json();
+    return data.skills || [];
+  },
+
   async downloadFile(fileIdOrUrl) {
-    if (!fileIdOrUrl) {
-      throw new Error('No file ID or file URL provided');
+    if (
+      !fileIdOrUrl ||
+      fileIdOrUrl === '#' ||
+      fileIdOrUrl === 'undefined' ||
+      fileIdOrUrl === 'null' ||
+      fileIdOrUrl === '' ||
+      (typeof fileIdOrUrl === 'string' && fileIdOrUrl.endsWith('/api/files/download/'))
+    ) {
+      throw new Error('No valid file ID or file URL provided');
     }
 
     // 1. Try to extract fileId and check local IndexedDB first
@@ -517,6 +581,19 @@ export const api = {
   async reanalyzeWeeklyReport(projectId, reportId) {
     return await request(`${PROJECT_URL}/api/projects/${projectId}/reports/${reportId}/analyze`, {
       method: 'POST',
+    });
+  },
+  
+  async deleteWeeklyReport(projectId, reportId) {
+    return await request(`${PROJECT_URL}/api/projects/${projectId}/reports/${reportId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async updateWeeklyReport(projectId, reportId, reportData) {
+    return await request(`${PROJECT_URL}/api/projects/${projectId}/reports/${reportId}`, {
+      method: 'PUT',
+      body: JSON.stringify(reportData),
     });
   },
 

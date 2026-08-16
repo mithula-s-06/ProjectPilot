@@ -67,17 +67,9 @@ const PerformanceTable = ({ members = [], projectName = '' }) => {
                   </td>
                   {/* Project */}
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {m.projectNames && m.projectNames.length > 1 ? (
-                      <select className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-brand-border rounded-lg text-xs font-semibold text-brand-text focus:ring-1 focus:ring-primary focus:outline-none cursor-pointer">
-                        {m.projectNames.map((proj, pIdx) => (
-                          <option key={pIdx} value={proj}>{proj}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className="text-xs font-bold text-brand-text">
-                        {(m.projectNames && m.projectNames[0]) || projectName || 'AI safety analysis'}
-                      </span>
-                    )}
+                    <span className="text-xs font-bold text-brand-text">
+                      {projectName || (m.projectNames && m.projectNames[0]) || 'AI safety analysis'}
+                    </span>
                   </td>
                   {/* GitHub Commits Bar */}
                   <td className="px-6 py-4 whitespace-nowrap">

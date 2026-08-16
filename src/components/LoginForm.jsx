@@ -69,11 +69,16 @@ const LoginForm = () => {
           id: u.id,
           fullName: u.name,
           email: u.email,
-          role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+          role: u.role === 'ADMIN' || u.role === 'SYSTEM_ADMINISTRATOR' ? 'System Administrator' : u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
           collegeName: u.collegeName || '',
           department: u.department || 'Computer Science & Engineering',
           status: 'Active',
-          team: u.team || 'Not Assigned'
+          team: u.team || 'Not Assigned',
+          yearOfStudy: u.yearOfStudy || '',
+          resumeId: u.resumeId || '',
+          resumeName: u.resumeName || '',
+          resumeUrl: u.resumeUrl || '',
+          skills: u.skills || []
         }));
         localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
 
@@ -83,6 +88,11 @@ const LoginForm = () => {
           user.team = myUserRecord.team || 'Not Assigned';
           user.collegeName = myUserRecord.collegeName || user.collegeName || '';
           user.department = myUserRecord.department || user.department || 'Computer Science & Engineering';
+          user.yearOfStudy = myUserRecord.yearOfStudy || '';
+          user.resumeId = myUserRecord.resumeId || '';
+          user.resumeName = myUserRecord.resumeName || '';
+          user.resumeUrl = myUserRecord.resumeUrl || '';
+          user.skills = myUserRecord.skills || [];
           localStorage.setItem('currentUser', JSON.stringify(user));
         }
       } catch (err) {

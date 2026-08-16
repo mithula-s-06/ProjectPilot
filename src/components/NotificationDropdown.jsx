@@ -133,7 +133,7 @@ const NotificationDropdown = ({ isOpen, onClose, notifications, onSeeAll }) => {
                   {notif.message}
                 </p>
                 <span className="text-[9px] font-semibold text-brand-text-muted/50 block pt-1">
-                  {notif.time}
+                  {notif.date ? `${notif.date} • ${notif.time}` : notif.time}
                 </span>
               </div>
             </div>

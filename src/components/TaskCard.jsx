@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiCheckSquare, FiChevronDown, FiChevronUp, FiClock, FiAlertCircle, FiFileText, FiDownload, FiEdit, FiTrash2 } from 'react-icons/fi';
+import { FiCheckSquare, FiChevronDown, FiChevronUp, FiClock, FiAlertCircle, FiFileText, FiDownload, FiEdit, FiTrash2, FiLink } from 'react-icons/fi';
 import { api } from '../utils/api';
 
 const TaskCard = ({ initialTasks = [], onNavigateToSubmitReport, onNavigateToEditReport, onUpdateTasks }) => {
@@ -9,10 +9,36 @@ const TaskCard = ({ initialTasks = [], onNavigateToSubmitReport, onNavigateToEdi
   const [toast, setToast] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  const [tasks, setTasks] = useState(initialTasks);
+  const resolveTaskStatus = (t) => {
+    let resolvedStatus = t.status;
+    if (t.reportSubmitted && t.reportDetails) {
+      const repStatus = t.reportDetails.status || t.reportDetails.submissionStatus;
+      if (repStatus === 'Approved') {
+        resolvedStatus = 'Completed';
+      } else if (repStatus === 'Reassigned') {
+        resolvedStatus = 'Rejected & Reassigned';
+      } else {
+        resolvedStatus = 'Under Review';
+      }
+    } else if (t.isReassigned) {
+      resolvedStatus = 'Rejected & Reassigned';
+    } else if (!t.status || t.status === 'Pending') {
+      resolvedStatus = 'In Progress';
+    }
+    return resolvedStatus;
+  };
+
+  const [tasks, setTasks] = useState(() => (initialTasks || []).map(t => ({
+    ...t,
+    status: t.reportSubmitted && t.reportDetails ? (t.reportDetails.status === 'Approved' ? 'Completed' : (t.reportDetails.status === 'Reassigned' ? 'Rejected & Reassigned' : 'Under Review')) : (t.isReassigned ? 'Rejected & Reassigned' : (!t.status || t.status === 'Pending' ? 'In Progress' : t.status))
+  })));
 
   useEffect(() => {
-    setTasks(initialTasks);
+    const resolved = (initialTasks || []).map(t => ({
+      ...t,
+      status: resolveTaskStatus(t)
+    }));
+    setTasks(resolved);
   }, [initialTasks]);
 
   const toggleExpandTask = (taskId) => {
@@ -149,11 +175,13 @@ const TaskCard = ({ initialTasks = [], onNavigateToSubmitReport, onNavigateToEdi
     switch (status) {
       case 'Completed':
         return 'text-emerald-500 bg-emerald-500/5';
+      case 'Under Review':
+        return 'text-amber-500 bg-amber-500/5';
+      case 'Rejected & Reassigned':
+        return 'text-rose-500 bg-rose-500/5';
       case 'In Progress':
-        return 'text-blue-500 bg-blue-500/5';
-      case 'Pending':
       default:
-        return 'text-slate-500 bg-slate-50/5';
+        return 'text-blue-500 bg-blue-500/5';
     }
   };
 
@@ -211,7 +239,7 @@ const TaskCard = ({ initialTasks = [], onNavigateToSubmitReport, onNavigateToEdi
           
           {/* Filters Row */}
           <div className="flex flex-wrap items-center gap-2 pt-2">
-            {['All', 'Pending', 'In Progress', 'Completed'].map((opt) => {
+            {['All', 'In Progress', 'Under Review', 'Completed', 'Rejected & Reassigned'].map((opt) => {
               const count = opt === 'All' ? tasks.length : tasks.filter((t) => t.status === opt).length;
               return (
                 <button
@@ -296,6 +324,90 @@ const TaskCard = ({ initialTasks = [], onNavigateToSubmitReport, onNavigateToEdi
                         onClick={(e) => e.stopPropagation()} 
                         className="w-full mt-2 p-3 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/20 space-y-2 animate-fade-in text-[11px] text-left cursor-default"
                       >
+                        {/* Task Assignment Details (Description, Documents, Links) */}
+                        <div className="space-y-3 pb-3 border-b border-brand-border/30 mb-2">
+                          <span className="font-extrabold text-cyan-500 uppercase tracking-widest text-[9px] block">
+                            Task Requirements
+                          </span>
+                          
+                          {task.description ? (
+                            <p className="text-brand-text leading-relaxed text-xs">
+                              {task.description}
+                            </p>
+                          ) : (
+                            <p className="text-brand-text-muted italic text-xs">
+                              No description provided for this task.
+                            </p>
+                          )}
+
+                          {/* Task Assignment Attached Documents */}
+                          {task.documents && task.documents.length > 0 && (
+                            <div className="space-y-2 pt-1">
+                              <span className="text-[9px] font-bold text-brand-text-muted uppercase tracking-wider block">
+                                Task Attachments ({task.documents.length})
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {task.documents.map((doc, idx) => (
+                                  <div key={idx} className="flex items-center justify-between p-2 rounded-lg border border-brand-border bg-brand-card text-[10px]">
+                                    <span className="text-brand-text font-semibold truncate max-w-[120px] flex items-center gap-1.5" title={doc.fileName}>
+                                      <FiFileText className="w-3.5 h-3.5 text-primary shrink-0" />
+                                      {doc.fileName}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          const blob = await api.downloadFile(doc.fileId);
+                                          const url = window.URL.createObjectURL(blob);
+                                          const a = document.createElement('a');
+                                          a.href = url;
+                                          a.download = doc.fileName;
+                                          document.body.appendChild(a);
+                                          a.click();
+                                          a.remove();
+                                        } catch (err) {
+                                          console.error('Failed to download file:', err);
+                                          if (doc.fileUrl) {
+                                            window.open(doc.fileUrl, '_blank');
+                                          }
+                                        }
+                                      }}
+                                      className="px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-brand-text hover:text-primary hover:bg-primary/10 border border-brand-border transition-colors font-bold text-[9px] uppercase cursor-pointer"
+                                    >
+                                      Download
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Task Assignment Reference Links */}
+                          {task.referenceLinks && task.referenceLinks.length > 0 && (
+                            <div className="space-y-1.5 pt-1">
+                              <span className="text-[9px] font-bold text-brand-text-muted uppercase tracking-wider block">
+                                Reference Links ({task.referenceLinks.length})
+                              </span>
+                              <div className="space-y-1.5">
+                                {task.referenceLinks.map((link, idx) => (
+                                  <div key={idx} className="flex items-center gap-1.5 text-brand-text">
+                                    <FiLink className="w-3 h-3 text-secondary shrink-0" />
+                                    <a
+                                      href={link}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-primary hover:underline hover:text-secondary font-bold truncate max-w-full"
+                                      title={link}
+                                    >
+                                      {link}
+                                    </a>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
                         {task.isReassigned && (
                           <div className="p-3 rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-500 text-xs font-semibold mb-2">
                             ⚠️ This task was reassigned for review by the advisor. Reason: "{task.reassignFeedback || 'Please review recommendations.'}"

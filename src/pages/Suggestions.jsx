@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FiSend, FiMessageSquare, FiUsers, FiUser, FiCalendar, FiCheckCircle } from 'react-icons/fi';
+import { FiSend, FiMessageSquare, FiUsers, FiUser, FiCalendar, FiCheckCircle, FiTrash2 } from 'react-icons/fi';
 import { api, addNotification } from '../utils/api';
 
 const Suggestions = () => {
@@ -36,7 +36,15 @@ const Suggestions = () => {
         fullName: u.fullName || u.name,
         email: u.email,
         role: (u.role === 'TEAM_LEADER' || u.role === 'Team Leader') ? 'Team Leader' : (u.role === 'MENTOR' || u.role === 'Mentor') ? 'Mentor' : 'Student',
-        team: u.team || 'Not Assigned'
+        team: u.team || 'Not Assigned',
+        collegeName: u.collegeName || '',
+        department: u.department || 'Computer Science & Engineering',
+        status: 'Active',
+        yearOfStudy: u.yearOfStudy || '',
+        resumeId: u.resumeId || '',
+        resumeName: u.resumeName || '',
+        resumeUrl: u.resumeUrl || '',
+        skills: u.skills || []
       }));
       localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
       setUsers(mappedUsers);
@@ -194,9 +202,11 @@ const Suggestions = () => {
       const recipientLabel = `${matchedMember.name} (${matchedMember.role})`;
       const targetEmail = matchedMember.email;
 
+      const suggestionId = `sug-${Date.now()}`;
+
       // 2. Prepare Mentor Feedback Comment
       const newComment = {
-        id: `fb-${Date.now()}`,
+        id: suggestionId,
         author: loggedInMentorName,
         date: dateStr,
         text: `[Directive for ${recipientLabel}]: ${suggestionText}`
@@ -218,6 +228,7 @@ const Suggestions = () => {
       let savedSug = null;
       try {
         const res = await api.createSuggestion({
+          id: suggestionId,
           mentorName: loggedInMentorName,
           teamName: selectedProject.teamName,
           projectId: selectedProject.id,
@@ -280,6 +291,22 @@ const Suggestions = () => {
   const showToast = (message, type) => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleDeleteSuggestion = async (id) => {
+    try {
+      await api.deleteSuggestion(id);
+      
+      // Update local state
+      setProjectSuggestions(prev => prev.filter(s => s.id !== id));
+      
+      // Reload projects cache
+      loadData();
+      showToast('Suggestion deleted successfully.', 'success');
+    } catch (err) {
+      console.error('Failed to delete suggestion:', err);
+      showToast('Failed to delete suggestion. Please try again.', 'error');
+    }
   };
 
 
@@ -405,8 +432,16 @@ const Suggestions = () => {
                       <span className="text-[9px] font-extrabold text-cyan-500 uppercase tracking-wider block">
                         To: {sug.recipientName || 'Member'} ({sug.recipientRole || 'Student'})
                       </span>
-                      <span className="text-[10px] font-bold text-brand-text-muted/60 flex items-center gap-1">
-                        <FiCalendar className="w-3 h-3" /> {sug.date}
+                      <span className="text-[10px] font-bold text-brand-text-muted/60 flex items-center gap-2">
+                        <span className="flex items-center gap-1"><FiCalendar className="w-3 h-3" /> {sug.date}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSuggestion(sug.id)}
+                          className="p-1 rounded hover:bg-rose-500/10 text-rose-500 transition-colors cursor-pointer"
+                          title="Delete Suggestion"
+                        >
+                          <FiTrash2 className="w-3.5 h-3.5" />
+                        </button>
                       </span>
                     </div>
                     <p className="text-xs text-brand-text leading-relaxed mt-1">

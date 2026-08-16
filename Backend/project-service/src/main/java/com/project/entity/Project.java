@@ -31,6 +31,8 @@ public class Project {
     private List<Milestone> milestones = new ArrayList<>();
     private List<WeeklyReport> weeklyReports = new ArrayList<>();
     private Map<String, Object> mentorFeedback = new HashMap<>();
+    private List<Map<String, Object>> documents = new ArrayList<>();
+    private List<String> referenceLinks = new ArrayList<>();
 
     public Project() {}
 
@@ -90,4 +92,10 @@ public class Project {
 
     public Map<String, Object> getMentorFeedback() { return mentorFeedback; }
     public void setMentorFeedback(Map<String, Object> mentorFeedback) { this.mentorFeedback = mentorFeedback; }
+
+    public List<Map<String, Object>> getDocuments() { return documents; }
+    public void setDocuments(List<Map<String, Object>> documents) { this.documents = documents; }
+
+    public List<String> getReferenceLinks() { return referenceLinks; }
+    public void setReferenceLinks(List<String> referenceLinks) { this.referenceLinks = referenceLinks; }
 }

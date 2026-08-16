@@ -16,6 +16,7 @@ import Users from './Users';
 import Settings from './Settings';
 import Profile from './Profile';
 import TeamDetails from './TeamDetails';
+import Submissions from './Submissions';
 import NotificationsPage from './NotificationsPage';
 
 // Clear mock data imports
@@ -37,7 +38,11 @@ const AdminDashboard = () => {
       const storedUsers = localStorage.getItem('registeredUsers');
       
       const registeredUsers = storedUsers ? JSON.parse(storedUsers) : [];
-      const projects = storedProj ? JSON.parse(storedProj) : [];
+      const allProj = storedProj ? JSON.parse(storedProj) : [];
+      const projects = allProj.filter(p => 
+        p.name && 
+        (!p.teamName || !p.teamName.includes(','))
+      );
 
       const activeTeamsList = [];
 
@@ -225,11 +230,16 @@ const AdminDashboard = () => {
             id: u.id,
             fullName: u.name,
             email: u.email,
-            role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+            role: u.role === 'ADMIN' || u.role === 'SYSTEM_ADMINISTRATOR' ? 'System Administrator' : u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
             collegeName: u.collegeName || '',
             department: u.department || 'Computer Science & Engineering',
             status: 'Active',
-            team: u.team || 'Not Assigned'
+            team: u.team || 'Not Assigned',
+            yearOfStudy: u.yearOfStudy || '',
+            resumeId: u.resumeId || '',
+            resumeName: u.resumeName || '',
+            resumeUrl: u.resumeUrl || '',
+            skills: u.skills || []
           }));
           localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
         } catch (e) {
@@ -854,6 +864,8 @@ const AdminDashboard = () => {
         );
       case 'users':
         return <Users users={users} onViewUser={handleViewUser} onDeleteUser={handleDeleteUser} />;
+      case 'submissions':
+        return <Submissions />;
       case 'user-details':
         return (
           <div className="space-y-6 w-full text-left max-w-2xl animate-scale-up">
@@ -1019,6 +1031,7 @@ const AdminDashboard = () => {
                     { id: 'dashboard', label: 'Dashboard' },
                     { id: 'teams', label: 'Teams' },
                     { id: 'users', label: 'Users' },
+                    { id: 'submissions', label: 'Submissions' },
                     { id: 'settings', label: 'Settings' },
                     { id: 'profile', label: 'Profile' },
                   ].map((tab) => (

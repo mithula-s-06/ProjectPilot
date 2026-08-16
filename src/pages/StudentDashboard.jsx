@@ -38,7 +38,7 @@ const StudentDashboard = () => {
       const myUserRecord = registeredUsers.find(u => u.email.toLowerCase() === currentUser.email?.toLowerCase());
       const myTeamName = myUserRecord ? myUserRecord.team : 'Not Assigned';
 
-      if (myTeamName && myTeamName !== 'Not Assigned') {
+      if (myTeamName && myTeamName !== 'Not Assigned' && !myTeamName.includes(',')) {
         const sourceProjects = stored ? JSON.parse(stored) : [];
         const matchingProject = sourceProjects.find(p => 
           (p.teamName && p.teamName.toLowerCase() === myTeamName.toLowerCase() && p.name !== `${myTeamName} Project`)
@@ -228,7 +228,11 @@ const StudentDashboard = () => {
         try {
           await api.updateProject(proj.id, proj);
         } catch (e) {
-          console.warn(`Background sync failed for project ${proj.id}:`, e);
+          try {
+            await api.createProject(proj);
+          } catch (createErr) {
+            console.warn(`Background sync and creation failed for project ${proj.id}:`, createErr);
+          }
         }
       }
     } catch (e) {
@@ -285,11 +289,16 @@ const StudentDashboard = () => {
           id: u.id,
           fullName: u.name,
           email: u.email,
-          role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+          role: u.role === 'ADMIN' || u.role === 'SYSTEM_ADMINISTRATOR' ? 'System Administrator' : u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
           collegeName: u.collegeName || '',
           department: u.department || 'Computer Science & Engineering',
           status: 'Active',
-          team: u.team || 'Not Assigned'
+          team: u.team || 'Not Assigned',
+          yearOfStudy: u.yearOfStudy || '',
+          resumeId: u.resumeId || '',
+          resumeName: u.resumeName || '',
+          resumeUrl: u.resumeUrl || '',
+          skills: u.skills || []
         }));
         localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
 
@@ -300,6 +309,11 @@ const StudentDashboard = () => {
           currentUser.team = myUserRecord.team || 'Not Assigned';
           currentUser.collegeName = myUserRecord.collegeName || currentUser.collegeName || '';
           currentUser.department = myUserRecord.department || currentUser.department || 'Computer Science & Engineering';
+          currentUser.yearOfStudy = myUserRecord.yearOfStudy || '';
+          currentUser.resumeId = myUserRecord.resumeId || '';
+          currentUser.resumeName = myUserRecord.resumeName || '';
+          currentUser.resumeUrl = myUserRecord.resumeUrl || '';
+          currentUser.skills = myUserRecord.skills || [];
           localStorage.setItem('currentUser', JSON.stringify(currentUser));
 
           const myTeamName = myUserRecord.team;
@@ -548,20 +562,21 @@ const StudentDashboard = () => {
       fileId: reportData.fileId || null
     };
     
+    const previousReportId = (project.tasks || []).find(t => t.name === reportData.taskName)?.reportDetails?.id;
+    const cleanReports = (project.weeklyReports || []).filter(r => r.id !== previousReportId);
+
     const updatedTasks = (project.tasks || []).map((t) => {
       if (t.name === reportData.taskName) {
         return {
           ...t,
           reportSubmitted: true,
           reportDetails: newReport,
-          isReassigned: false
+          isReassigned: false,
+          status: 'Under Review'
         };
       }
       return t;
     });
-    const cleanReports = (project.weeklyReports || []).filter(r => 
-      !updatedTasks.some(t => t.name === reportData.taskName && t.reportDetails && t.reportDetails.id === r.id)
-    );
     
     let overallCommits = 0;
     let overallPRs = 0;
@@ -748,6 +763,33 @@ const StudentDashboard = () => {
       }
     });
 
+    // Filter out deleted reports and sync edited ones
+    const updatedWeeklyReports = (project.weeklyReports || []).filter(r => {
+      const originallyBelongsToTask = (project.tasks || []).some(t => t.reportDetails && t.reportDetails.id === r.id);
+      if (originallyBelongsToTask) {
+        const isStillActive = updatedTasks.some(t => t.reportDetails && t.reportDetails.id === r.id);
+        return isStillActive;
+      }
+      return true;
+    }).map(r => {
+      const matchingTask = updatedTasks.find(t => t.reportDetails && t.reportDetails.id === r.id);
+      if (matchingTask) {
+        return {
+          ...r,
+          week: matchingTask.reportDetails.week,
+          remarks: matchingTask.reportDetails.remarks,
+          commitsCount: matchingTask.reportDetails.commitsCount,
+          prsCount: matchingTask.reportDetails.prsCount,
+          fileName: matchingTask.reportDetails.fileName,
+          fileSize: matchingTask.reportDetails.fileSize,
+          fileUrl: matchingTask.reportDetails.fileUrl,
+          fileId: matchingTask.reportDetails.fileId,
+          submittedDate: matchingTask.reportDetails.submittedDate
+        };
+      }
+      return r;
+    });
+
     const updatedProj = {
       ...project,
       tasks: updatedTasks,
@@ -757,7 +799,8 @@ const StudentDashboard = () => {
         ...(project.github || {}),
         commits: overallCommits,
         prs: overallPRs
-      }
+      },
+      weeklyReports: updatedWeeklyReports
     };
 
     const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
@@ -944,7 +987,7 @@ const StudentDashboard = () => {
               const updatedTasks = editProj.tasks.map(t => {
                 if (t.id === submittingTask.id) {
                   return {
-                    ...t,
+                    status: 'Under Review',
                     reportDetails: {
                       ...t.reportDetails,
                       week: reportData.title,

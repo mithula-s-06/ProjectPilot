@@ -1,10 +1,21 @@
 import React from 'react';
-import { FiArrowLeft, FiActivity, FiGithub, FiCalendar, FiCheckSquare } from 'react-icons/fi';
+import { FiArrowLeft, FiActivity, FiGithub, FiCalendar, FiCheckSquare, FiLayers, FiFileText, FiLink } from 'react-icons/fi';
 import { api } from '../utils/api';
 import HealthScoreCard from '../components/HealthScoreCard';
 
 const TeamDetails = ({ team, onBack, onUpdateTeamHealth }) => {
   const [memberMetrics, setMemberMetrics] = React.useState([]);
+
+  const currentUser = React.useMemo(() => {
+    try {
+      const stored = localStorage.getItem('currentUser');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const isMentor = currentUser?.role === 'Mentor';
 
   React.useEffect(() => {
     async function loadMetrics() {
@@ -251,6 +262,95 @@ const TeamDetails = ({ team, onBack, onUpdateTeamHealth }) => {
     );
   };
 
+  // Aggregate all documents from project settings, tasks, and weekly reports
+  const allDocuments = React.useMemo(() => {
+    if (!activeProject) return [];
+    const allDocs = [];
+    const seenDocKeys = new Set();
+
+    if (activeProject.documents) {
+      activeProject.documents.forEach(doc => {
+        const key = doc.fileId || doc.fileUrl || doc.fileName;
+        if (key && !seenDocKeys.has(key)) {
+          seenDocKeys.add(key);
+          allDocs.push({
+            fileName: doc.fileName,
+            fileId: doc.fileId,
+            fileUrl: doc.fileUrl,
+            source: 'Project Settings'
+          });
+        }
+      });
+    }
+
+    if (activeProject.tasks) {
+      activeProject.tasks.forEach(task => {
+        if (task.reportDetails && task.reportDetails.fileName && task.reportDetails.fileUrl) {
+          const fileUrl = task.reportDetails.fileUrl;
+          let fileId = null;
+          if (fileUrl.includes('/download/')) {
+            fileId = fileUrl.substring(fileUrl.lastIndexOf('/') + 1);
+          }
+          const key = fileId || fileUrl || task.reportDetails.fileName;
+          if (key && !seenDocKeys.has(key)) {
+            seenDocKeys.add(key);
+            allDocs.push({
+              fileName: task.reportDetails.fileName,
+              fileId: fileId,
+              fileUrl: fileUrl,
+              source: `Submission: ${task.name}`
+            });
+          }
+        }
+      });
+    }
+
+    if (activeProject.weeklyReports) {
+      activeProject.weeklyReports.forEach(report => {
+        if (report.fileName && report.fileUrl) {
+          const fileUrl = report.fileUrl;
+          let fileId = null;
+          if (fileUrl.includes('/download/')) {
+            fileId = fileUrl.substring(fileUrl.lastIndexOf('/') + 1);
+          }
+          const key = fileId || fileUrl || report.fileName;
+          if (key && !seenDocKeys.has(key)) {
+            seenDocKeys.add(key);
+            allDocs.push({
+              fileName: report.fileName,
+              fileId: fileId,
+              fileUrl: fileUrl,
+              source: `Report: ${report.week || report.title || 'Weekly Report'}`
+            });
+          }
+        }
+      });
+    }
+    return allDocs;
+  }, [activeProject]);
+
+  // Aggregate all reference links from project settings and tasks
+  const allReferenceLinks = React.useMemo(() => {
+    if (!activeProject) return [];
+    const allLinks = [];
+    const seenLinks = new Set();
+
+    if (activeProject.referenceLinks) {
+      activeProject.referenceLinks.forEach(link => {
+        if (link && !seenLinks.has(link)) {
+          seenLinks.add(link);
+          allLinks.push({
+            url: link,
+            source: 'Project Settings'
+          });
+        }
+      });
+    }
+
+
+    return allLinks;
+  }, [activeProject]);
+
   return (
     <div className="space-y-6 w-full text-left animate-fade-in pb-12">
       {/* Back button */}
@@ -330,8 +430,169 @@ const TeamDetails = ({ team, onBack, onUpdateTeamHealth }) => {
         )}
       </div>
 
+      {/* Project Phase section */}
+      {activeProject && (
+        <div className="p-5 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md hover:border-primary/20 hover:shadow-glow-primary/5 transition-all duration-300 flex items-center justify-between gap-4 text-left">
+          <div className="flex items-center gap-2.5">
+            <FiLayers className="w-5 h-5 text-cyan-500 animate-pulse" />
+            <span className="text-xs sm:text-sm font-extrabold text-brand-text tracking-wide uppercase">
+              Project Development Phase
+            </span>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <select
+              value={activeProject.phase || 'Planning Phase'}
+              disabled={!isMentor}
+              onChange={async (e) => {
+                const newPhase = e.target.value;
+                try {
+                  const updatedProj = {
+                    ...activeProject,
+                    phase: newPhase,
+                    status: newPhase === 'Completed' ? 'Completed' : 'Active'
+                  };
+                  await api.updateProject(activeProject.id, updatedProj);
+                  
+                  const stored = localStorage.getItem('projects');
+                  if (stored) {
+                    const allProj = JSON.parse(stored);
+                    const nextAllProj = allProj.map(p => p.id === activeProject.id ? updatedProj : p);
+                    localStorage.setItem('projects', JSON.stringify(nextAllProj));
+                    window.dispatchEvent(new Event('storage'));
+                  }
+                  
+                  // Also dispatch notification to Team Leader & Members
+                  const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+                  const teamMembersList = registeredUsers.filter(u => 
+                    u.team && u.team.split(',').map(t => t.trim().toLowerCase()).includes(team.name.toLowerCase())
+                  );
+                  teamMembersList.forEach(m => {
+                    if (m.email) {
+                      api.createNotification({
+                        title: 'Project Phase Updated',
+                        message: `Your project phase has been set to "${newPhase}" by your mentor Dr. Anusha Kaur.`,
+                        recipient: m.email,
+                        teamName: team.name,
+                        type: 'info',
+                        id: `notif-${Date.now()}-${Math.random()}`
+                      }).catch(e => console.warn('Failed to send phase notification:', e));
+                    }
+                  });
+
+                  window.location.reload();
+                } catch (err) {
+                  console.error('Failed to update project phase:', err);
+                }
+              }}
+              className="text-xs font-bold px-3 py-1.5 rounded-lg border border-brand-border bg-slate-50 dark:bg-slate-900 text-brand-text focus:outline-none cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
+            >
+              <option value="Planning Phase" className="bg-brand-card">Planning Phase</option>
+              <option value="Design Phase" className="bg-brand-card">Design Phase</option>
+              <option value="Implementation Phase" className="bg-brand-card">Implementation Phase</option>
+              <option value="Testing Phase" className="bg-brand-card">Testing Phase</option>
+              <option value="Deployment Phase" className="bg-brand-card">Deployment Phase</option>
+              <option value="Completed" className="bg-brand-card">Completed</option>
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* Health Score section */}
       <HealthScoreCard health={projectHealth} healthDetails={projectHealthDetails} onUpdateHealth={handleUpdateHealth} />
+
+      {/* Project Documents & Reference Links */}
+      {((allDocuments.length > 0) || (allReferenceLinks.length > 0)) && (
+        <div className="p-6 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-sm space-y-4">
+          <h3 className="text-xs font-extrabold uppercase tracking-widest text-brand-text pb-2.5 border-b border-brand-border/40 flex items-center gap-2">
+            <FiFileText className="w-4 h-4 text-primary" />
+            Project Resources & Reference Links
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Documents Column */}
+            {allDocuments.length > 0 && (
+              <div className="space-y-2.5">
+                <span className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider block">
+                  Attached Documents ({allDocuments.length})
+                </span>
+                <div className="space-y-2">
+                  {allDocuments.map((doc, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/10 text-xs">
+                      <div className="flex flex-col gap-1 truncate max-w-[230px]">
+                        <span className="text-brand-text font-semibold flex items-center gap-2 truncate" title={doc.fileName}>
+                          <FiFileText className="w-4 h-4 text-primary flex-shrink-0" />
+                          {doc.fileName}
+                        </span>
+                        {doc.source && (
+                          <span className="text-[9px] font-bold text-brand-text-muted/65 uppercase tracking-wider pl-6">
+                            via {doc.source}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const blob = await api.downloadFile(doc.fileId);
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = doc.fileName;
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                          } catch (err) {
+                            console.error('Failed to download file:', err);
+                            if (doc.fileUrl) {
+                              window.open(doc.fileUrl, '_blank');
+                            }
+                          }
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg border border-brand-border bg-brand-card hover:bg-slate-100 dark:hover:bg-slate-800 text-[10px] font-bold text-brand-text cursor-pointer transition-colors"
+                      >
+                        Download
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Reference Links Column */}
+            {allReferenceLinks.length > 0 && (
+              <div className="space-y-2.5">
+                <span className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider block">
+                  Reference Links ({allReferenceLinks.length})
+                </span>
+                <div className="space-y-2">
+                  {allReferenceLinks.map((link, idx) => (
+                    <div key={idx} className="flex items-center p-3 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/10 text-xs">
+                      <div className="flex flex-col gap-1 truncate max-w-full">
+                        <span className="text-brand-text font-semibold flex items-center gap-2 truncate">
+                          <FiLink className="w-4 h-4 text-secondary flex-shrink-0" />
+                          <a
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline hover:text-secondary font-bold truncate transition-colors"
+                            title={link.url}
+                          >
+                            {link.url}
+                          </a>
+                        </span>
+                        {link.source && (
+                          <span className="text-[9px] font-bold text-brand-text-muted/65 uppercase tracking-wider pl-6">
+                            via {link.source}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -450,6 +711,65 @@ const TeamDetails = ({ team, onBack, onUpdateTeamHealth }) => {
                         <p className="text-[10px] text-brand-text-muted mt-1 leading-relaxed">
                           {task.description || 'No description provided.'}
                         </p>
+                        
+                        {/* Task Documents */}
+                        {task.documents && task.documents.length > 0 && (
+                          <div className="mt-2.5 space-y-1 text-[9px] text-left">
+                            <span className="font-bold text-brand-text-muted uppercase tracking-wider block">Task Attachments</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {task.documents.map((doc, dIdx) => (
+                                <button
+                                  key={dIdx}
+                                  type="button"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      const blob = await api.downloadFile(doc.fileId);
+                                      const url = window.URL.createObjectURL(blob);
+                                      const a = document.createElement('a');
+                                      a.href = url;
+                                      a.download = doc.fileName;
+                                      document.body.appendChild(a);
+                                      a.click();
+                                      a.remove();
+                                    } catch (err) {
+                                      console.error('Failed to download:', err);
+                                      if (doc.fileUrl) window.open(doc.fileUrl, '_blank');
+                                    }
+                                  }}
+                                  className="px-2 py-0.8 rounded border border-brand-border bg-slate-50 dark:bg-slate-900 text-brand-text hover:text-primary transition-colors font-semibold flex items-center gap-1 cursor-pointer"
+                                  title={doc.fileName}
+                                >
+                                  <FiFileText className="w-3 h-3 text-primary shrink-0" />
+                                  <span className="truncate max-w-[80px]">{doc.fileName}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Task Reference Links */}
+                        {task.referenceLinks && task.referenceLinks.length > 0 && (
+                          <div className="mt-2.5 space-y-1 text-[9px] text-left">
+                            <span className="font-bold text-brand-text-muted uppercase tracking-wider block">Reference Links</span>
+                            <div className="flex flex-col gap-1">
+                              {task.referenceLinks.map((link, lIdx) => (
+                                <div key={lIdx} className="flex items-center gap-1 text-brand-text truncate">
+                                  <FiLink className="w-3 h-3 text-secondary shrink-0" />
+                                  <a
+                                    href={link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary hover:underline font-semibold truncate max-w-full"
+                                    title={link}
+                                  >
+                                    {link}
+                                  </a>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
                         task.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :

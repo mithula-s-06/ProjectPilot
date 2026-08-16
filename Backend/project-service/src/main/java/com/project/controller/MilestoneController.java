@@ -49,6 +49,8 @@ public class MilestoneController {
     public ResponseEntity<Milestone> updateMilestone(@PathVariable String id, @RequestBody Milestone milestoneDetails) {
         return milestoneRepository.findById(id).map(milestone -> {
             milestone.setName(milestoneDetails.getName());
+            milestone.setDescription(milestoneDetails.getDescription());
+            milestone.setPriority(milestoneDetails.getPriority());
             milestone.setDueDate(milestoneDetails.getDueDate());
             milestone.setProgress(milestoneDetails.getProgress());
             milestone.setStatus(milestoneDetails.getStatus());

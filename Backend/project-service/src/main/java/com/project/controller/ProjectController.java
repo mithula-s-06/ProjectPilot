@@ -44,6 +44,22 @@ public class ProjectController {
         return projectRepository.findAll();
     }
 
+    @GetMapping("/submissions")
+    public List<Task> getAllSubmissions() {
+        List<Project> projects = projectRepository.findAll();
+        List<Task> submissions = new ArrayList<>();
+        for (Project p : projects) {
+            if (p.getTasks() != null) {
+                for (Task t : p.getTasks()) {
+                    if (t.getReportSubmitted() != null && t.getReportSubmitted()) {
+                        submissions.add(t);
+                    }
+                }
+            }
+        }
+        return submissions;
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Project> getProject(@PathVariable String id) {
         return projectRepository.findById(id)
@@ -81,6 +97,12 @@ public class ProjectController {
             }
             if (projectDetails.getMilestones() != null) {
                 project.setMilestones(projectDetails.getMilestones());
+            }
+            if (projectDetails.getDocuments() != null) {
+                project.setDocuments(projectDetails.getDocuments());
+            }
+            if (projectDetails.getReferenceLinks() != null) {
+                project.setReferenceLinks(projectDetails.getReferenceLinks());
             }
             if (projectDetails.getWeeklyReports() != null) {
                 List<WeeklyReport> allReportsInDB = new ArrayList<>();
@@ -271,6 +293,83 @@ public class ProjectController {
                 }
             }
             if (found) {
+                Project updated = saveProjectAndSync(project);
+                return ResponseEntity.ok(updated);
+            }
+            return ResponseEntity.badRequest().<Project>build();
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/{id}/reports/{reportId}")
+    public ResponseEntity<Project> deleteReport(@PathVariable String id, @PathVariable String reportId) {
+        return projectRepository.findById(id).map(project -> {
+            project.getWeeklyReports().removeIf(r -> r.getId().equals(reportId));
+            if (project.getTasks() != null) {
+                for (com.project.entity.Task t : project.getTasks()) {
+                    if (t.getReportDetails() != null && reportId.equals(t.getReportDetails().getId())) {
+                        t.setReportDetails(null);
+                        t.setReportSubmitted(false);
+                        t.setStatus("Pending");
+                    }
+                }
+            }
+            Project updated = saveProjectAndSync(project);
+            return ResponseEntity.ok(updated);
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/{id}/reports/{reportId}")
+    public ResponseEntity<Project> updateReport(@PathVariable String id, @PathVariable String reportId, @RequestBody WeeklyReport reportDetails) {
+        return projectRepository.findById(id).map(project -> {
+            WeeklyReport target = null;
+            for (WeeklyReport r : project.getWeeklyReports()) {
+                if (r.getId().equals(reportId)) {
+                    target = r;
+                    break;
+                }
+            }
+            if (target != null) {
+                target.setWeek(reportDetails.getWeek());
+                target.setTitle(reportDetails.getTitle());
+                target.setRemarks(reportDetails.getRemarks());
+                if (reportDetails.getFileName() != null) target.setFileName(reportDetails.getFileName());
+                if (reportDetails.getFileSize() != null) target.setFileSize(reportDetails.getFileSize());
+                if (reportDetails.getFileUrl() != null) target.setFileUrl(reportDetails.getFileUrl());
+                
+                if (project.getTasks() != null) {
+                    for (com.project.entity.Task t : project.getTasks()) {
+                        if (t.getReportDetails() != null && reportId.equals(t.getReportDetails().getId())) {
+                            t.getReportDetails().setWeek(reportDetails.getWeek());
+                            t.getReportDetails().setTitle(reportDetails.getTitle());
+                            t.getReportDetails().setRemarks(reportDetails.getRemarks());
+                            if (reportDetails.getFileName() != null) t.getReportDetails().setFileName(reportDetails.getFileName());
+                            if (reportDetails.getFileSize() != null) t.getReportDetails().setFileSize(reportDetails.getFileSize());
+                            if (reportDetails.getFileUrl() != null) t.getReportDetails().setFileUrl(reportDetails.getFileUrl());
+                        }
+                    }
+                }
+
+                // Re-run AI analysis
+                List<WeeklyReport> allReportsInDB = new ArrayList<>();
+                try {
+                    List<Project> allProjects = projectRepository.findAll();
+                    if (allProjects != null) {
+                        for (Project p : allProjects) {
+                            if (p.getWeeklyReports() != null) {
+                                for (WeeklyReport other : p.getWeeklyReports()) {
+                                    if (!other.getId().equals(reportId)) {
+                                        allReportsInDB.add(other);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ex) {}
+
+                try {
+                    aiService.analyzeReport(target, allReportsInDB);
+                } catch (Exception ex) {}
+
                 Project updated = saveProjectAndSync(project);
                 return ResponseEntity.ok(updated);
             }

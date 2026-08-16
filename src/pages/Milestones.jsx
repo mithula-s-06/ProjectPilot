@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiX, FiCheck, FiCalendar, FiFlag, FiTrash2, FiEdit } from 'react-icons/fi';
+import { FiPlus, FiX, FiCheck, FiCalendar, FiFlag, FiTrash2, FiEdit, FiArrowLeft } from 'react-icons/fi';
 import { addNotification } from '../utils/api';
 import ConfirmModal from '../components/ConfirmModal';
 
-const Milestones = ({ project, _teamName, onUpdateMilestones }) => {
+const Milestones = ({ project, _teamName, projects = [], onUpdateMilestones }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState(null);
-  const [milestones, setMilestones] = useState(() => {
-    if (project && project.milestones) {
-      return project.milestones;
-    }
-    return [];
-  });
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [milestones, setMilestones] = useState([]);
 
   const [confirmModalState, setConfirmModalState] = useState({
     isOpen: false,
@@ -26,10 +22,12 @@ const Milestones = ({ project, _teamName, onUpdateMilestones }) => {
   const todayStr = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
-    if (project && project.milestones) {
-      setMilestones(project.milestones);
+    if (selectedProject) {
+      setMilestones(selectedProject.milestones || []);
+    } else {
+      setMilestones([]);
     }
-  }, [project]);
+  }, [selectedProject]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -72,8 +70,12 @@ const Milestones = ({ project, _teamName, onUpdateMilestones }) => {
           m.id === id ? { ...m, status: nextStatus, progress: nextProgress } : m
         );
         setMilestones(nextMilestones);
-        if (onUpdateMilestones) {
-          onUpdateMilestones(nextMilestones);
+        if (selectedProject) {
+          selectedProject.milestones = nextMilestones;
+          setSelectedProject({ ...selectedProject });
+        }
+        if (onUpdateMilestones && selectedProject) {
+          onUpdateMilestones(nextMilestones, selectedProject.id);
         }
         showToast(`Milestone updated to ${nextStatus}!`, 'success');
       }
@@ -95,13 +97,18 @@ const Milestones = ({ project, _teamName, onUpdateMilestones }) => {
         setConfirmModalState(prev => ({ ...prev, isOpen: false }));
         const nextMilestones = milestones.filter(m => m.id !== id);
         setMilestones(nextMilestones);
-        if (onUpdateMilestones) {
-          onUpdateMilestones(nextMilestones);
+        if (selectedProject) {
+          selectedProject.milestones = nextMilestones;
+          setSelectedProject({ ...selectedProject });
+        }
+        if (onUpdateMilestones && selectedProject) {
+          onUpdateMilestones(nextMilestones, selectedProject.id);
         }
         showToast('Milestone deleted successfully!', 'success');
       }
     });
   };
+
   const handleCreateClick = () => {
     setEditingMilestone(null);
     setFormData({
@@ -158,8 +165,8 @@ const Milestones = ({ project, _teamName, onUpdateMilestones }) => {
         
         let nextMilestones;
         if (editingMilestone) {
-          const progressVal = Number(formData.progress);
-          const statusVal = progressVal === 100 ? 'Completed' : formData.status;
+          const statusVal = formData.status;
+          const progressVal = statusVal === 'Completed' ? 100 : 0;
           nextMilestones = milestones.map(m =>
             m.id === editingMilestone.id ? {
               ...m,
@@ -187,7 +194,7 @@ const Milestones = ({ project, _teamName, onUpdateMilestones }) => {
           ];
 
           try {
-            const targetTeam = project ? project.teamName : _teamName;
+            const targetTeam = selectedProject ? selectedProject.teamName : _teamName;
             if (targetTeam) {
               addNotification(
                 'New Milestone Declared',
@@ -205,8 +212,12 @@ const Milestones = ({ project, _teamName, onUpdateMilestones }) => {
         }
 
         setMilestones(nextMilestones);
-        if (onUpdateMilestones) {
-          onUpdateMilestones(nextMilestones);
+        if (selectedProject) {
+          selectedProject.milestones = nextMilestones;
+          setSelectedProject({ ...selectedProject });
+        }
+        if (onUpdateMilestones && selectedProject) {
+          onUpdateMilestones(nextMilestones, selectedProject.id);
         }
         setModalOpen(false);
         setEditingMilestone(null);
@@ -215,8 +226,79 @@ const Milestones = ({ project, _teamName, onUpdateMilestones }) => {
     });
   };
 
+  if (!selectedProject) {
+    return (
+      <div className="space-y-6 w-full text-left animate-fade-in">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-extrabold text-brand-text mb-1 tracking-tight">
+            Team Projects
+          </h2>
+          <p className="text-xs sm:text-sm text-brand-text-muted">
+            Select a project below to view its milestones.
+          </p>
+        </div>
+
+        {projects.length === 0 ? (
+          <div className="p-12 text-center rounded-2xl border border-dashed border-brand-border bg-brand-card/20 text-brand-text-muted text-sm font-semibold select-none">
+            No projects found.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {projects.map((proj) => (
+              <div key={proj.id} className="p-5 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-md flex flex-col justify-between hover:shadow-xl transition-all duration-300">
+                <div className="space-y-2">
+                  <h3 className="text-sm font-extrabold text-brand-text tracking-tight">
+                    {proj.name}
+                  </h3>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-secondary uppercase tracking-widest block">
+                      {proj.domain}
+                    </span>
+                    <span className="text-[10px] font-bold text-brand-text-muted block">
+                      Team Name: {proj.teamName || 'Not Assigned'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-brand-text-muted/80 line-clamp-2 leading-relaxed">
+                    {proj.description}
+                  </p>
+                </div>
+
+                <div className="pt-4 border-t border-brand-border/40 mt-4 flex items-center justify-between">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${
+                    proj.status === 'Completed'
+                      ? 'text-blue-500 bg-blue-500/10 border-blue-500/20'
+                      : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
+                  }`}>
+                    {proj.status}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProject(proj)}
+                    className="px-4 py-2 rounded-xl bg-primary text-white font-bold text-xs uppercase tracking-wider hover:shadow-glow-primary hover-lift transition-all duration-300 cursor-pointer"
+                  >
+                    View Milestones
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 w-full text-left relative animate-fade-in">
+      {/* Back button */}
+      <button
+        type="button"
+        onClick={() => setSelectedProject(null)}
+        className="flex items-center gap-2 text-xs font-bold text-brand-text-muted hover:text-brand-text uppercase tracking-wider transition-colors duration-300 group focus:outline-none cursor-pointer mb-2"
+      >
+        <FiArrowLeft className="w-4 h-4 transition-transform duration-300 group-hover:-translate-x-1" />
+        <span>Back to Projects</span>
+      </button>
+
       {toast && toast.type === 'success' && (
         <div className="p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 text-xs font-semibold flex items-center justify-between animate-fade-in w-full">
           <span>{toast.message}</span>
@@ -298,6 +380,12 @@ const Milestones = ({ project, _teamName, onUpdateMilestones }) => {
                   </div>
                 </div>
 
+                {ms.description && (
+                  <p className="text-xs text-brand-text-muted leading-relaxed whitespace-pre-wrap py-1">
+                    {ms.description}
+                  </p>
+                )}
+                
                 <div className="flex items-center gap-4 text-xs font-semibold text-brand-text-muted">
                   <span className="flex items-center gap-1">
                     <FiCalendar className="w-3.5 h-3.5 text-primary" /> Due: {ms.dueDate}
@@ -394,32 +482,17 @@ const Milestones = ({ project, _teamName, onUpdateMilestones }) => {
                 />
               </div>
               {editingMilestone && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-bold text-brand-text-muted uppercase block mb-1.5">Progress (%)</label>
-                    <input
-                      type="number"
-                      name="progress"
-                      min="0"
-                      max="100"
-                      value={formData.progress}
-                      onChange={handleChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-brand-text-muted uppercase block mb-1.5">Status</label>
-                    <select
-                      name="status"
-                      value={formData.status}
-                      onChange={handleChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm cursor-pointer"
-                    >
-                      <option value="Pending" className="bg-brand-card">Pending</option>
-                      <option value="Completed" className="bg-brand-card">Completed</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="text-[10px] font-bold text-brand-text-muted uppercase block mb-1.5">Status</label>
+                  <select
+                    name="status"
+                    value={formData.status}
+                    onChange={handleChange}
+                    className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm cursor-pointer"
+                  >
+                    <option value="Pending" className="bg-brand-card">Pending</option>
+                    <option value="Completed" className="bg-brand-card">Completed</option>
+                  </select>
                 </div>
               )}
 

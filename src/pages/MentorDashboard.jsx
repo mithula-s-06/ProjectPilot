@@ -136,11 +136,16 @@ const MentorDashboard = () => {
           id: u.id,
           fullName: u.name,
           email: u.email,
-          role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+          role: u.role === 'ADMIN' || u.role === 'SYSTEM_ADMINISTRATOR' ? 'System Administrator' : u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
           collegeName: u.collegeName || '',
           department: u.department || 'Computer Science & Engineering',
           status: 'Active',
-          team: u.team || 'Not Assigned'
+          team: u.team || 'Not Assigned',
+          yearOfStudy: u.yearOfStudy || '',
+          resumeId: u.resumeId || '',
+          resumeName: u.resumeName || '',
+          resumeUrl: u.resumeUrl || '',
+          skills: u.skills || []
         }));
         localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
 
@@ -448,7 +453,7 @@ const MentorDashboard = () => {
                 if (t.name === taskName) {
                   return {
                     ...t,
-                    status: 'Pending',
+                    status: 'Rejected & Reassigned',
                     reportSubmitted: false, // Reset so button appears
                     reportDetails: null, // Clear so they can upload a new one
                     isReassigned: true,

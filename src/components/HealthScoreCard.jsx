@@ -64,8 +64,12 @@ const HealthScoreCard = ({ health, healthDetails, onUpdateHealth }) => {
       
       {/* Header (Always Visible) */}
       <div 
-        onClick={() => setExpanded(!expanded)}
-        className="px-6 py-5 flex items-center justify-between cursor-pointer hover:bg-slate-200/20 dark:hover:bg-slate-800/20 transition-colors duration-300 select-none"
+        onClick={isMentor ? () => setExpanded(!expanded) : undefined}
+        className={`px-6 py-5 flex items-center justify-between select-none ${
+          isMentor 
+            ? 'cursor-pointer hover:bg-slate-200/20 dark:hover:bg-slate-800/20 transition-colors duration-300' 
+            : ''
+        }`}
       >
         <div className="flex items-center gap-3.5">
           <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
@@ -75,7 +79,6 @@ const HealthScoreCard = ({ health, healthDetails, onUpdateHealth }) => {
             <h3 className="text-sm font-extrabold uppercase tracking-widest text-brand-text">
               Project Health Score
             </h3>
-
           </div>
         </div>
 
@@ -89,77 +92,51 @@ const HealthScoreCard = ({ health, healthDetails, onUpdateHealth }) => {
               {getHealthStatus(health)}
             </span>
           </div>
-          <div className="text-brand-text-muted">
-            {expanded ? <FiChevronUp className="w-5 h-5" /> : <FiChevronDown className="w-5 h-5" />}
-          </div>
+          {isMentor && (
+            <div className="text-brand-text-muted">
+              {expanded ? <FiChevronUp className="w-5 h-5" /> : <FiChevronDown className="w-5 h-5" />}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Expandable Panel */}
-      {expanded && (
+      {expanded && isMentor && (
         <div className="px-6 pb-6 pt-2 border-t border-brand-border/40 space-y-6 animate-fade-in max-h-[500px] overflow-y-auto custom-scrollbar text-left">
           
           {/* Mentor Update Form (Only visible to Mentor) */}
-          {isMentor && (
-            <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-primary">
-                Update Project Health Score
-              </h4>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-primary">
+              Update Project Health Score
+            </h4>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={tempHealth} 
+                onChange={(e) => setTempHealth(parseInt(e.target.value))}
+                className="w-full sm:max-w-xs accent-primary"
+              />
+              <div className="flex items-center gap-2">
                 <input 
-                  type="range" 
+                  type="number" 
                   min="0" 
                   max="100" 
                   value={tempHealth} 
-                  onChange={(e) => setTempHealth(parseInt(e.target.value))}
-                  className="w-full sm:max-w-xs accent-primary"
+                  onChange={(e) => setTempHealth(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="px-2.5 py-1 rounded-lg border border-brand-border bg-brand-card text-brand-text text-xs font-extrabold w-16 text-center focus:border-cyan-500 focus:outline-none"
                 />
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="number" 
-                    min="0" 
-                    max="100" 
-                    value={tempHealth} 
-                    onChange={(e) => setTempHealth(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
-                    className="px-2.5 py-1 rounded-lg border border-brand-border bg-brand-card text-brand-text text-xs font-extrabold w-16 text-center focus:border-cyan-500 focus:outline-none"
-                  />
-                  <button
-                    onClick={handleSaveHealth}
-                    disabled={saving}
-                    className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold text-[10px] uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    {saving ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
+                <button
+                  onClick={handleSaveHealth}
+                  disabled={saving}
+                  className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold text-[10px] uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
               </div>
             </div>
-          )}
-
-          {/* Historical stats metrics */}
-          <div className="space-y-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-brand-text-muted">
-              Historical Score Trend
-            </h4>
           </div>
-
-          {/* 2. Monthly Progress Indicators list */}
-          <div className="grid grid-cols-3 gap-3">
-            {scores.slice(-3).map((val, idx) => (
-              <div
-                key={idx}
-                className="p-3 rounded-xl border border-brand-border bg-slate-50/30 dark:bg-slate-900/10 text-center"
-              >
-                <span className="text-[9px] font-bold text-brand-text-muted uppercase tracking-wider block">
-                  {months[months.length - 3 + idx]} Score
-                </span>
-                <span className="text-lg font-extrabold text-brand-text mt-0.5 block">
-                  {val}%
-                </span>
-              </div>
-            ))}
-          </div>
-
-
 
         </div>
       )}

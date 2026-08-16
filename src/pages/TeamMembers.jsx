@@ -68,7 +68,22 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
         if (!active) return;
 
         // Sync local storage so other tabs see it too
-        localStorage.setItem('registeredUsers', JSON.stringify(fetchedUsers));
+        const mappedUsers = (fetchedUsers || []).map(u => ({
+          id: u.id,
+          fullName: u.name,
+          email: u.email,
+          role: u.role === 'ADMIN' || u.role === 'SYSTEM_ADMINISTRATOR' ? 'System Administrator' : u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+          collegeName: u.collegeName || '',
+          department: u.department || 'Computer Science & Engineering',
+          status: 'Active',
+          team: u.team || 'Not Assigned',
+          yearOfStudy: u.yearOfStudy || '',
+          resumeId: u.resumeId || '',
+          resumeName: u.resumeName || '',
+          resumeUrl: u.resumeUrl || '',
+          skills: u.skills || []
+        }));
+        localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
 
         let databaseTeams = [];
         try {
@@ -114,7 +129,7 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
 
           return {
             name: userName,
-            role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+            role: u.role === 'ADMIN' || u.role === 'SYSTEM_ADMINISTRATOR' ? 'System Administrator' : u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
             email: userEmail,
             githubUsername: u.githubUsername || userName.toLowerCase().replace(/\s+/g, '-'),
             contribution: u.contribution !== undefined ? u.contribution : (u.role === 'TEAM_LEADER' ? 40 : Math.floor(Math.random() * 20) + 15),
@@ -426,7 +441,11 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
                 </div>
 
                 <div className="pt-4 border-t border-brand-border/40 mt-4 flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 uppercase tracking-wider">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${
+                    proj.status === 'Completed'
+                      ? 'text-blue-500 bg-blue-500/10 border-blue-500/20'
+                      : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
+                  }`}>
                     {proj.status}
                   </span>
                   <button
@@ -490,7 +509,7 @@ const TeamMembers = ({ readOnly = false, projects = [] }) => {
             <TeamMemberCard 
               key={idx} 
               member={member} 
-              onEdit={!readOnly ? () => handleEditMember(member) : null}
+              onEdit={null}
               onDelete={!readOnly && member.role !== 'Team Leader' ? () => handleDeleteMember(member) : null}
             />
           ))}

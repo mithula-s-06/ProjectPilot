@@ -166,7 +166,7 @@ const NotificationsPage = ({ notifications = [], onClearAll, onBack }) => {
                       {notif.title}
                     </h4>
                     <span className="text-[10px] font-bold text-brand-text-muted/65 bg-slate-200/40 dark:bg-slate-800/40 px-2 py-0.5 rounded border border-brand-border/30 select-none">
-                      {notif.time}
+                      {notif.date ? `${notif.date} • ${notif.time}` : notif.time}
                     </span>
                   </div>
                   <p className="text-xs text-brand-text-muted leading-relaxed max-w-2xl">

@@ -24,14 +24,14 @@ public class AdminSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        if (!appUserRepository.existsByEmail("admin@pp.edu")) {
+        if (appUserRepository.findByEmail("admin@pp.edu") == null) {
             AppUser admin = new AppUser();
             admin.setName("System Administrator");
             admin.setEmail("admin@pp.edu");
             admin.setPassword(passwordEncoder.encode("ADMIN"));
             admin.setRole("ADMIN");
             appUserRepository.save(admin);
-            System.out.println("Default administrator (admin@pp.edu) successfully pre-seeded.");
+            System.out.println("[AdminSeeder] Default administrator (admin@pp.edu) successfully pre-seeded.");
         }
     }
 }

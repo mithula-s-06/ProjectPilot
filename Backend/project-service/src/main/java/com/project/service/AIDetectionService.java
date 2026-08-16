@@ -4,18 +4,19 @@ import com.project.entity.WeeklyReport;
 import com.project.entity.AIDetectionRecord;
 import com.project.repository.AIDetectionRecordRepository;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import java.util.*;
 
 @Service
 public class AIDetectionService {
 
-    private final RestTemplate restTemplate = new RestTemplate();
-    private static final String DETECTION_URL = "http://localhost:8083/api/ai/detect-ai";
     private final AIDetectionRecordRepository aiDetectionRecordRepository;
+    private final GeminiService geminiService;
 
-    public AIDetectionService(AIDetectionRecordRepository aiDetectionRecordRepository) {
+    public AIDetectionService(
+            AIDetectionRecordRepository aiDetectionRecordRepository,
+            GeminiService geminiService) {
         this.aiDetectionRecordRepository = aiDetectionRecordRepository;
+        this.geminiService = geminiService;
     }
 
     private static final List<String> LLM_MARKER_WORDS = Arrays.asList(
@@ -32,20 +33,14 @@ public class AIDetectionService {
         }
 
         try {
-            Map<String, String> aiRequest = new HashMap<>();
-            aiRequest.put("text", text);
-
-            Map<String, Object> aiResponse = restTemplate.postForObject(DETECTION_URL, aiRequest, Map.class);
-            if (aiResponse != null) {
-                Number score = (Number) aiResponse.get("aiProbability");
-                report.setAiGeneratedScore(score != null ? score.doubleValue() : 0.0);
-                
-                AIDetectionRecord record = new AIDetectionRecord(report.getId(), text, report.getAiGeneratedScore());
-                aiDetectionRecordRepository.save(record);
-                return;
-            }
+            double score = geminiService.detectAIGenerated(text);
+            report.setAiGeneratedScore(score);
+            
+            AIDetectionRecord record = new AIDetectionRecord(report.getId(), text, report.getAiGeneratedScore());
+            aiDetectionRecordRepository.save(record);
+            return;
         } catch (Exception e) {
-            System.err.println("AI Detection FastAPI service failed. Using Java fallback: " + e.getMessage());
+            System.err.println("Gemini AI detection failed. Using local word-marker fallback: " + e.getMessage());
         }
 
         // Native Java Fallback AI detection

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiX, FiCheck, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiPlus, FiX, FiCheck, FiChevronLeft, FiChevronRight, FiTrash2, FiPaperclip, FiLink, FiFileText, FiUpload } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
 import ProjectGrid from '../components/ProjectGrid';
 import { api, addNotification } from '../utils/api';
 import ConfirmModal from '../components/ConfirmModal';
+import { fileStorage } from '../utils/fileStorage';
 
 const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, onDeleteProject }) => {
   const { currentPage } = usePage();
@@ -44,6 +45,12 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
     githubUrl: '',
   });
 
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [existingDocuments, setExistingDocuments] = useState([]);
+  const [referenceLinks, setReferenceLinks] = useState([]);
+  const [linkInput, setLinkInput] = useState('');
+  const [uploading, setUploading] = useState(false);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -60,6 +67,10 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
       teamName: project.teamName || '',
       githubUrl: project.github ? project.github.repoUrl || '' : '',
     });
+    setExistingDocuments(project.documents || []);
+    setReferenceLinks(project.referenceLinks || []);
+    setSelectedFiles([]);
+    setLinkInput('');
     setModalOpen(true);
   };
 
@@ -74,6 +85,10 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
       teamName: '',
       githubUrl: '',
     });
+    setExistingDocuments([]);
+    setReferenceLinks([]);
+    setSelectedFiles([]);
+    setLinkInput('');
     setModalOpen(true);
   };
 
@@ -116,8 +131,44 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
       confirmText: editingProject ? 'Save Changes' : 'Create Project',
       cancelText: 'Cancel',
       variant: 'primary',
-      onConfirm: () => {
+      onConfirm: async () => {
         setConfirmModalState(prev => ({ ...prev, isOpen: false }));
+
+        // Upload any newly selected files
+        let uploadedDocs = [];
+        if (selectedFiles.length > 0) {
+          setUploading(true);
+          try {
+            uploadedDocs = await Promise.all(selectedFiles.map(async (file) => {
+              try {
+                const res = await api.uploadFile(file);
+                await fileStorage.saveFile(res.id, file);
+                return {
+                  fileName: file.name,
+                  fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+                  fileUrl: res.fileUrl,
+                  fileId: res.id
+                };
+              } catch (uploadErr) {
+                console.warn('Backend upload failed for file:', file.name, uploadErr);
+                const localId = `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                await fileStorage.saveFile(localId, file);
+                return {
+                  fileName: file.name,
+                  fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+                  fileUrl: `local-file:${localId}`,
+                  fileId: localId
+                };
+              }
+            }));
+          } catch (err) {
+            console.error('File uploads failed:', err);
+          } finally {
+            setUploading(false);
+          }
+        }
+
+        const mergedDocuments = [...existingDocuments, ...uploadedDocs];
 
         // Sync team name back to user profile
         try {
@@ -140,7 +191,12 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
               role: matchedUser.role === 'Team Leader' ? 'TEAM_LEADER' : matchedUser.role === 'Mentor' ? 'MENTOR' : 'STUDENT',
               department: matchedUser.department || 'Computer Science & Engineering',
               team: formData.teamName.trim(),
-              collegeName: matchedUser.collegeName || ''
+              collegeName: matchedUser.collegeName || '',
+              yearOfStudy: matchedUser.yearOfStudy || '',
+              resumeId: matchedUser.resumeId || '',
+              resumeName: matchedUser.resumeName || '',
+              resumeUrl: matchedUser.resumeUrl || '',
+              skills: matchedUser.skills || []
             }).catch(err => console.warn('Failed to sync user profile team to database:', err));
           }
         } catch (err) {
@@ -157,6 +213,8 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
               startDate: formData.startDate,
               endDate: formData.endDate,
               teamName: formData.teamName.trim(),
+              documents: mergedDocuments,
+              referenceLinks: referenceLinks,
               github: {
                 ...editingProject.github,
                 repoUrl: formData.githubUrl.trim()
@@ -182,6 +240,8 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
               health: 100,
               progress: 0,
               status: 'Active',
+              documents: mergedDocuments,
+              referenceLinks: referenceLinks,
               healthDetails: {
                 scores: [100],
                 months: ['Jun'],
@@ -227,6 +287,10 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
 
         setModalOpen(false);
         setFormData({ name: '', domain: '', description: '', startDate: '', endDate: '', teamName: '', githubUrl: '' });
+        setExistingDocuments([]);
+        setReferenceLinks([]);
+        setSelectedFiles([]);
+        setLinkInput('');
         setEditingProject(null);
         setTimeout(() => {
           setToast(null);
@@ -269,8 +333,8 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
       <ProjectGrid 
         projects={paginatedProjects} 
         onViewProject={onViewProject} 
-        onEditProject={handleEditClick} 
-        onDeleteProject={handleDeleteClick}
+        onEditProject={(isTeamLeader || currentPage === 'admin') ? handleEditClick : null} 
+        onDeleteProject={(isTeamLeader || currentPage === 'admin') ? handleDeleteClick : null}
         isTeamLeader={isTeamLeader}
       />
 
@@ -395,6 +459,130 @@ const Projects = ({ projects = [], onViewProject, onAddProject, onEditProject, o
                   placeholder="Describe your project objectives..."
                   className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text placeholder-slate-400 focus:outline-none focus:border-primary/50 text-sm"
                 />
+              </div>
+
+              {/* Document Upload */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider block">
+                  Project Documents
+                </label>
+                
+                {/* Existing attached documents */}
+                {existingDocuments.length > 0 && (
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                    {existingDocuments.map((doc, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 rounded-lg border border-brand-border bg-slate-100/50 dark:bg-slate-900/10 text-xs">
+                        <span className="text-brand-text font-semibold flex items-center gap-1.5 truncate max-w-[280px]">
+                          <FiFileText className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                          {doc.fileName}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setExistingDocuments(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-1 rounded text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                        >
+                          <FiTrash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Newly selected files */}
+                {selectedFiles.length > 0 && (
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                    {selectedFiles.map((file, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 rounded-lg border border-brand-border bg-emerald-500/5 text-xs">
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5 truncate max-w-[280px]">
+                          <FiUpload className="w-3.5 h-3.5 flex-shrink-0 animate-bounce" />
+                          {file.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-1 rounded text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                        >
+                          <FiTrash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="relative">
+                  <input
+                    type="file"
+                    id="project-docs"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files) {
+                        const newFiles = Array.from(e.target.files);
+                        setSelectedFiles(prev => [...prev, ...newFiles]);
+                      }
+                    }}
+                  />
+                  <label
+                    htmlFor="project-docs"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-brand-border hover:border-primary bg-slate-50/30 dark:bg-slate-900/10 text-brand-text-muted hover:text-brand-text text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    <FiPaperclip className="w-4 h-4" />
+                    <span>Upload Documents</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Reference Links */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider block">
+                  Reference Links
+                </label>
+
+                {/* List of links */}
+                {referenceLinks.length > 0 && (
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                    {referenceLinks.map((link, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 rounded-lg border border-brand-border bg-slate-100/50 dark:bg-slate-900/10 text-xs">
+                        <span className="text-brand-text font-semibold flex items-center gap-1.5 truncate max-w-[280px]">
+                          <FiLink className="w-3.5 h-3.5 text-secondary flex-shrink-0" />
+                          <a href={link} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary">{link}</a>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setReferenceLinks(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-1 rounded text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                        >
+                          <FiTrash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={linkInput}
+                    onChange={(e) => setLinkInput(e.target.value)}
+                    placeholder="https://example.com/resource"
+                    className="flex-1 px-4 py-2 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text placeholder-slate-400 focus:outline-none focus:border-primary/50 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (linkInput.trim() && (linkInput.startsWith('http://') || linkInput.startsWith('https://'))) {
+                        setReferenceLinks(prev => [...prev, linkInput.trim()]);
+                        setLinkInput('');
+                      } else {
+                        setToast({ message: 'Please enter a valid link starting with http:// or https://', type: 'error' });
+                        setTimeout(() => setToast(null), 3000);
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-brand-text font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

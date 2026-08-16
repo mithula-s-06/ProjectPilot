@@ -20,7 +20,12 @@ const Profile = () => {
       college: '',
       team: 'Not Assigned',
       projectsCount: 0,
-      projectsList: []
+      projectsList: [],
+      yearOfStudy: '',
+      resumeId: '',
+      resumeName: '',
+      resumeUrl: '',
+      skills: []
     };
 
     try {
@@ -33,7 +38,9 @@ const Profile = () => {
         const userRecord = registeredUsers.find(u => u.email.toLowerCase() === user.email.toLowerCase()) || user;
 
         // Calculate dynamic properties
-        const allProjects = JSON.parse(localStorage.getItem('projects') || '[]');
+        const allProjects = JSON.parse(localStorage.getItem('projects') || '[]').filter(p => 
+          (!p.teamName || !p.teamName.includes(','))
+        );
         const isMentor = userRecord.role === 'MENTOR' || userRecord.role === 'Mentor';
         
         let userTeamsString = userRecord.team || 'Not Assigned';
@@ -92,7 +99,12 @@ const Profile = () => {
           department: userRecord.department || defaultData.department,
           team: userTeamsString,
           projectsCount: matchedProjects.length,
-          projectsList: matchedProjects.map(p => p.name)
+          projectsList: matchedProjects.map(p => p.name),
+          yearOfStudy: userRecord.yearOfStudy || '',
+          resumeId: userRecord.resumeId || '',
+          resumeName: userRecord.resumeName || '',
+          resumeUrl: userRecord.resumeUrl || '',
+          skills: userRecord.skills || []
         };
       }
     } catch (e) {
@@ -119,7 +131,12 @@ const Profile = () => {
             fullName: myUserRecord.name || myUserRecord.fullName || user.fullName,
             team: myUserRecord.team || 'Not Assigned',
             collegeName: myUserRecord.collegeName || '',
-            department: myUserRecord.department || ''
+            department: myUserRecord.department || '',
+            yearOfStudy: myUserRecord.yearOfStudy || '',
+            resumeId: myUserRecord.resumeId || '',
+            resumeName: myUserRecord.resumeName || '',
+            resumeUrl: myUserRecord.resumeUrl || '',
+            skills: myUserRecord.skills || []
           };
           localStorage.setItem('currentUser', JSON.stringify(updatedUser));
 
@@ -127,10 +144,14 @@ const Profile = () => {
           const isMentor = myUserRecord.role === 'MENTOR' || myUserRecord.role === 'Mentor' || myUserRecord.role === 'Mentor';
           let userTeamsString = myUserRecord.team || 'Not Assigned';
           let matchedProjects = [];
+          
+          const cleanProjList = (allProjects || []).filter(p => 
+            (!p.teamName || !p.teamName.includes(','))
+          );
 
           if (isMentor) {
             const mentorName = (myUserRecord.name || myUserRecord.fullName || '').toLowerCase().trim();
-            matchedProjects = allProjects.filter(p => {
+            matchedProjects = cleanProjList.filter(p => {
               const pMentor = (p.mentor || p.mentorName || '').toLowerCase().trim();
               return pMentor === mentorName;
             });
@@ -143,7 +164,7 @@ const Profile = () => {
             const userTeams = userTeamsString && userTeamsString !== 'Not Assigned'
               ? userTeamsString.split(',').map(t => t.trim().toLowerCase())
               : [];
-            matchedProjects = allProjects.filter(p => {
+            matchedProjects = cleanProjList.filter(p => {
               const pTeam = p.teamName ? p.teamName.toLowerCase().trim() : '';
               return userTeams.includes(pTeam) ||
                      (p.name && userTeams.some(t => p.name.toLowerCase().includes(t)));
@@ -170,7 +191,12 @@ const Profile = () => {
             department: myUserRecord.department || '',
             team: userTeamsString,
             projectsCount: matchedProjects.length,
-            projectsList: matchedProjects.map(p => p.name)
+            projectsList: matchedProjects.map(p => p.name),
+            yearOfStudy: myUserRecord.yearOfStudy || '',
+            resumeId: myUserRecord.resumeId || '',
+            resumeName: myUserRecord.resumeName || '',
+            resumeUrl: myUserRecord.resumeUrl || '',
+            skills: myUserRecord.skills || []
           });
         }
       } catch (calcErr) {
@@ -201,13 +227,20 @@ const Profile = () => {
           id: u.id,
           fullName: u.name,
           email: u.email,
-          role: u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
+          role: u.role === 'ADMIN' || u.role === 'SYSTEM_ADMINISTRATOR' ? 'System Administrator' : u.role === 'TEAM_LEADER' ? 'Team Leader' : u.role === 'MENTOR' ? 'Mentor' : 'Student',
           collegeName: u.collegeName || '',
           department: u.department || 'Computer Science & Engineering',
           status: 'Active',
-          team: u.team || 'Not Assigned'
+          team: u.team || 'Not Assigned',
+          yearOfStudy: u.yearOfStudy || '',
+          resumeId: u.resumeId || '',
+          resumeName: u.resumeName || '',
+          resumeUrl: u.resumeUrl || '',
+          skills: u.skills || []
         }));
 
+        localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
+        localStorage.setItem('projects', JSON.stringify(allProjects || []));
         calculateProfile(mappedUsers, allProjects);
       } catch (err) {
         console.warn('Failed to load fresh profile data from backend:', err);
@@ -229,6 +262,104 @@ const Profile = () => {
 
   // Success / Error alerts
   const [feedback, setFeedback] = useState({ type: '', message: '' });
+  const [skillInput, setSkillInput] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleYearChange = (delta) => {
+    setEditForm(prev => {
+      const currentYear = parseInt(prev.yearOfStudy, 10) || 1;
+      return {
+        ...prev,
+        yearOfStudy: String(Math.min(Math.max(currentYear + delta, 1), 5))
+      };
+    });
+  };
+
+  const handleSkillAdd = (e) => {
+    if (e.key === 'Enter' || e.type === 'click') {
+      e.preventDefault();
+      const val = skillInput.trim();
+      const skillsList = editForm.skills || [];
+      if (val && !skillsList.includes(val)) {
+        setEditForm(prev => ({
+          ...prev,
+          skills: [...(prev.skills || []), val]
+        }));
+        setSkillInput('');
+      }
+    }
+  };
+
+  const handleSkillRemove = (skillToRemove) => {
+    setEditForm(prev => ({
+      ...prev,
+      skills: (prev.skills || []).filter(s => s !== skillToRemove)
+    }));
+  };
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  const uploadResumeFile = async (file) => {
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const response = await api.uploadFile(file);
+      if (response && response.id) {
+        setEditForm(prev => ({
+          ...prev,
+          resumeId: response.id,
+          resumeName: response.fileName || file.name,
+          resumeUrl: response.fileUrl || '#'
+        }));
+
+        // Trigger AI skill extraction immediately!
+        try {
+          const extractedSkills = await api.extractSkills(response.id);
+          if (extractedSkills && extractedSkills.length > 0) {
+            setEditForm(prev => {
+              const existing = prev.skills || [];
+              const combined = Array.from(new Set([...existing, ...extractedSkills]));
+              return {
+                ...prev,
+                skills: combined
+              };
+            });
+          }
+        } catch (extractErr) {
+          console.warn("Skill extraction failed:", extractErr);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setFeedback({ type: 'error', message: 'Failed to upload resume. Please try again.' });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    await uploadResumeFile(file);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      await uploadResumeFile(file);
+    }
+  };
 
   // Sync edits on reset/load
   useEffect(() => {
@@ -295,7 +426,12 @@ const Profile = () => {
             role: backendRole,
             department: updatedProfile.department,
             team: userRecord.team || 'Not Assigned',
-            collegeName: updatedProfile.college
+            collegeName: updatedProfile.college,
+            yearOfStudy: updatedProfile.yearOfStudy,
+            resumeId: updatedProfile.resumeId,
+            resumeName: updatedProfile.resumeName,
+            resumeUrl: updatedProfile.resumeUrl,
+            skills: updatedProfile.skills
           });
 
           // Sync registeredUsers in localStorage
@@ -303,6 +439,11 @@ const Profile = () => {
           userRecord.email = updatedProfile.email;
           userRecord.collegeName = updatedProfile.college;
           userRecord.department = updatedProfile.department;
+          userRecord.yearOfStudy = updatedProfile.yearOfStudy;
+          userRecord.resumeId = updatedProfile.resumeId;
+          userRecord.resumeName = updatedProfile.resumeName;
+          userRecord.resumeUrl = updatedProfile.resumeUrl;
+          userRecord.skills = updatedProfile.skills;
           localStorage.setItem('registeredUsers', JSON.stringify(registeredUsers));
 
           // Dispatch storage event to trigger real-time updates across pages
@@ -352,7 +493,12 @@ const Profile = () => {
         fullName: updatedProfile.name,
         email: updatedProfile.email,
         collegeName: updatedProfile.college,
-        department: updatedProfile.department
+        department: updatedProfile.department,
+        yearOfStudy: updatedProfile.yearOfStudy,
+        resumeId: updatedProfile.resumeId,
+        resumeName: updatedProfile.resumeName,
+        resumeUrl: updatedProfile.resumeUrl,
+        skills: updatedProfile.skills
       };
       localStorage.setItem('currentUser', JSON.stringify(updatedUser));
       
@@ -410,6 +556,7 @@ const Profile = () => {
   // Render view card
   const renderProfileView = () => {
     const isAdmin = currentPage === 'admin';
+    const isStudentOrLeader = profileData.roleLabel === 'Student' || profileData.roleLabel === 'Team Leader';
     return (
       <div className="p-6 sm:p-8 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-md flex flex-col md:flex-row gap-8 items-center md:items-start relative overflow-hidden">
         <div className={`absolute top-0 right-0 w-32 h-32 blur-2xl pointer-events-none rounded-full ${
@@ -437,19 +584,7 @@ const Profile = () => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {isAdmin ? (
-              <div className="p-3.5 rounded-xl border border-brand-border bg-slate-50/30 dark:bg-slate-900/10 text-left flex items-center gap-3">
-                <FiUser className="w-5 h-5 text-primary flex-shrink-0" />
-                <div>
-                  <span className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider block">
-                    Username
-                  </span>
-                  <span className="text-sm font-semibold text-brand-text">
-                    {profileData.username}
-                  </span>
-                </div>
-              </div>
-            ) : null}
+
 
             <div className="p-3.5 rounded-xl border border-brand-border bg-slate-50/30 dark:bg-slate-900/10 text-left flex items-center gap-3">
               <FiMail className="w-5 h-5 text-secondary flex-shrink-0" />
@@ -517,9 +652,70 @@ const Profile = () => {
                     )}
                   </div>
                 </div>
+
+                {/* Year of Study & Resume */}
+                {isStudentOrLeader && (
+                  <>
+                    <div className="p-3.5 rounded-xl border border-brand-border bg-slate-50/30 dark:bg-slate-900/10 text-left flex items-center gap-3">
+                      <FiBookOpen className="w-5 h-5 text-indigo-400 flex-shrink-0" />
+                      <div>
+                        <span className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider block">
+                          Year of Study
+                        </span>
+                        <span className="text-xs font-semibold text-brand-text">
+                          {profileData.yearOfStudy ? `Year ${profileData.yearOfStudy}` : 'Not Specified'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl border border-brand-border bg-slate-50/30 dark:bg-slate-900/10 text-left flex items-center gap-3">
+                      <FiCheck className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                      <div>
+                        <span className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider block">
+                          Resume
+                        </span>
+                        {profileData.resumeId ? (
+                          <a
+                            href={`${api.PROJECT_URL}/api/files/download/${profileData.resumeId}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs font-bold text-primary hover:underline flex items-center gap-1 mt-0.5"
+                          >
+                            Download Resume ({profileData.resumeName || 'file'})
+                          </a>
+                        ) : (
+                          <span className="text-xs font-semibold text-brand-text block mt-0.5">No resume uploaded</span>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
+
+          {/* Skills and Technologies Section */}
+          {isStudentOrLeader && (
+            <div className="border-t border-brand-border/40 pt-4 text-left">
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-brand-text-muted mb-2.5">
+                Skills & Technologies
+              </h4>
+              {profileData.skills && profileData.skills.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {profileData.skills.map((skill) => (
+                    <span
+                      key={skill}
+                      className="px-3 py-1 rounded-lg text-xs font-bold bg-primary/10 text-primary border border-primary/25"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-xs text-brand-text-muted block">No skills listed. Edit profile to add some!</span>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-col sm:flex-row gap-4 pt-4 justify-start">
             <button
@@ -545,6 +741,7 @@ const Profile = () => {
   // Render Edit Form
   const renderProfileEditForm = () => {
     const isAdmin = currentPage === 'admin';
+    const isStudentOrLeader = editForm.roleLabel === 'Student' || editForm.roleLabel === 'Team Leader';
     return (
       <form onSubmit={handleSaveProfile} className="p-6 sm:p-8 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-md space-y-6 max-w-2xl animate-scale-up text-left">
         <h3 className="text-sm font-extrabold uppercase tracking-widest text-brand-text pb-2 border-b border-brand-border/40">
@@ -582,20 +779,7 @@ const Profile = () => {
             />
           </div>
 
-          {isAdmin && (
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-brand-text-muted mb-2 block">
-                Username
-              </label>
-              <input
-                type="text"
-                name="username"
-                value={editForm.username}
-                onChange={handleEditChange}
-                className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm"
-              />
-            </div>
-          )}
+
 
           {!isAdmin && (
             <>
@@ -627,6 +811,149 @@ const Profile = () => {
             </>
           )}
         </div>
+
+        {isStudentOrLeader && (
+          <div className="space-y-5 pt-4 border-t border-brand-border/40 animate-scale-up">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              {/* Year of Study */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-brand-text-muted mb-2 block">
+                  Year of Study
+                </label>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleYearChange(-1)}
+                    disabled={parseInt(editForm.yearOfStudy, 10) <= 1}
+                    className="w-10 h-10 rounded-xl border border-brand-border bg-slate-50 dark:bg-slate-900/30 flex items-center justify-center font-bold text-lg hover:bg-slate-200/50 dark:hover:bg-slate-800/50 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-brand-text transition-colors duration-300"
+                  >
+                    -
+                  </button>
+                  <span className="font-extrabold text-sm text-brand-text px-4 py-2 border border-brand-border rounded-xl bg-slate-50/50 dark:bg-slate-900/20 min-w-16 text-center select-none">
+                    Year {editForm.yearOfStudy || 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleYearChange(1)}
+                    disabled={parseInt(editForm.yearOfStudy, 10) >= 5}
+                    className="w-10 h-10 rounded-xl border border-brand-border bg-slate-50 dark:bg-slate-900/30 flex items-center justify-center font-bold text-lg hover:bg-slate-200/50 dark:hover:bg-slate-800/50 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-brand-text transition-colors duration-300"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Resume Upload */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-brand-text-muted mb-0 block">
+                    Upload Resume
+                  </label>
+                  {editForm.resumeName && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditForm(prev => ({
+                          ...prev,
+                          resumeId: '',
+                          resumeName: '',
+                          resumeUrl: ''
+                        }));
+                      }}
+                      className="text-[10px] font-extrabold uppercase tracking-wide text-rose-500 hover:text-rose-600 transition-colors cursor-pointer"
+                    >
+                      Remove Resume
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+                    onChange={handleFileUpload}
+                    id="profile-resume-upload"
+                    className="hidden"
+                    disabled={isUploading}
+                  />
+                  <label
+                    htmlFor="profile-resume-upload"
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`w-full flex flex-col items-center justify-center p-4 rounded-xl border border-dashed text-sm font-semibold transition-all duration-300 cursor-pointer ${
+                      isDragging
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : editForm.resumeName 
+                          ? 'border-emerald-500/50 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' 
+                          : 'border-brand-border hover:border-primary/50 hover:bg-slate-200/20 dark:hover:bg-slate-850/20 text-brand-text-muted'
+                    }`}
+                  >
+                    <div className="flex flex-col items-center gap-1.5 text-center pointer-events-none select-none">
+                      {isDragging ? (
+                        <span className="text-primary font-bold animate-pulse text-xs">Drop the file here!</span>
+                      ) : (
+                        <>
+                          <span className="truncate max-w-[220px] text-xs">{editForm.resumeName || (isUploading ? 'Uploading...' : 'Drag & drop or click to replace')}</span>
+                          <span className="text-[9px] text-brand-text-muted/65 font-normal">PDF, DOCX, TXT, PNG, JPG</span>
+                        </>
+                      )}
+                      {isUploading ? (
+                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mt-0.5" />
+                      ) : (
+                        editForm.resumeName && <FiCheck className="w-4 h-4 text-emerald-500 mt-0.5" />
+                      )}
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Skills Editor */}
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-brand-text-muted mb-2 block">
+                Edit Skills & Technologies
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={skillInput}
+                  onChange={(e) => setSkillInput(e.target.value)}
+                  onKeyDown={handleSkillAdd}
+                  placeholder="Type a skill and press Enter"
+                  className="flex-grow px-4 py-2 rounded-xl border border-brand-border bg-slate-50 dark:bg-slate-900/30 text-brand-text placeholder-brand-text-muted/40 focus:outline-none focus:ring-1 focus:border-primary/50 focus:ring-primary/40 focus:shadow-glow-primary text-sm transition-all duration-300"
+                />
+                <button
+                  type="button"
+                  onClick={handleSkillAdd}
+                  className="px-4 py-2 rounded-xl bg-primary text-white font-bold text-xs uppercase tracking-wider hover:shadow-glow-primary hover-lift transition-all duration-300 cursor-pointer"
+                >
+                  Add
+                </button>
+              </div>
+
+              {/* Skills tags list */}
+              {editForm.skills && editForm.skills.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3 animate-fade-in">
+                  {editForm.skills.map((skill) => (
+                    <span
+                      key={skill}
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold bg-primary/10 text-primary border border-primary/20"
+                    >
+                      <span>{skill}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleSkillRemove(skill)}
+                        className="text-primary hover:text-rose-500 transition-colors focus:outline-none cursor-pointer"
+                      >
+                        <FiX className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Buttons */}
         <div className="flex gap-4 pt-3 border-t border-brand-border/40 justify-end">

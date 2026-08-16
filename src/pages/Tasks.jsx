@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiX, FiCheck, FiClock, FiUser, FiFileText, FiTrash2 } from 'react-icons/fi';
+import { FiPlus, FiX, FiCheck, FiClock, FiUser, FiFileText, FiTrash2, FiEdit, FiArrowLeft, FiLink, FiPaperclip, FiUpload } from 'react-icons/fi';
 import { api, addNotification } from '../utils/api';
 import ConfirmModal from '../components/ConfirmModal';
+import { fileStorage } from '../utils/fileStorage';
 
 const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [selectedModalProject, setSelectedModalProject] = useState(null);
   const [teamMembers, setTeamMembers] = useState([]);
-  const [selectedModalProject, setSelectedModalProject] = useState(project || projects[0] || null);
 
   // Confirmation modal state
   const [confirmModalState, setConfirmModalState] = useState({
@@ -92,16 +95,10 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
   };
 
   useEffect(() => {
-    if (modalOpen) {
-      setSelectedModalProject(project || projects[0] || null);
-    }
-  }, [modalOpen, project, projects]);
-
-  useEffect(() => {
     let active = true;
     const loadMembers = async () => {
       try {
-        const activeTeamName = selectedModalProject?.teamName || teamName;
+        const activeTeamName = selectedProject?.teamName || teamName;
         if (!activeTeamName || activeTeamName === 'Not Assigned') return;
 
         const fetchedUsers = await api.listUsers() || [];
@@ -151,30 +148,32 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
     return () => {
       active = false;
     };
-  }, [selectedModalProject, teamName]);
+  }, [selectedProject, teamName]);
 
-  const [tasks, setTasks] = useState(() => {
-    if (project && project.tasks) {
-      return project.tasks;
-    }
-    return [];
-  });
+  const [tasks, setTasks] = useState([]);
 
   useEffect(() => {
-    if (project && project.tasks) {
-      setTasks(project.tasks);
+    if (selectedProject) {
+      setTasks(selectedProject.tasks || []);
     } else {
       setTasks([]);
     }
-  }, [project]);
+  }, [selectedProject]);
 
   const [formData, setFormData] = useState({
     name: '',
     student: '',
     priority: 'High',
     deadline: '',
-    description: ''
+    description: '',
+    taskType: 'Feature'
   });
+
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [existingDocuments, setExistingDocuments] = useState([]);
+  const [referenceLinks, setReferenceLinks] = useState([]);
+  const [linkInput, setLinkInput] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (modalOpen && teamMembers.length > 0) {
@@ -205,33 +204,7 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
     if (toast && toast.type === 'error') setToast(null);
   };
 
-  const handleToggleStatus = (id) => {
-    const task = tasks.find(t => t.id === id);
-    if (!task) return;
 
-    let nextStatus = 'In Progress';
-    if (task.status === 'Pending') nextStatus = 'In Progress';
-    else if (task.status === 'In Progress') nextStatus = 'Completed';
-    else nextStatus = 'Pending';
-
-    setConfirmModalState({
-      isOpen: true,
-      title: 'Update Task Status?',
-      message: `Do you want to change the status of "${task.name}" to "${nextStatus}"?`,
-      confirmText: 'Update Status',
-      cancelText: 'Cancel',
-      variant: 'primary',
-      onConfirm: () => {
-        setConfirmModalState(prev => ({ ...prev, isOpen: false }));
-        const nextTasks = tasks.map(t => (t.id === id ? { ...t, status: nextStatus } : t));
-        setTasks(nextTasks);
-        if (onUpdateTasks && project) {
-          onUpdateTasks(nextTasks, project.id);
-        }
-        showToast(`Task status updated to ${nextStatus}`, 'success');
-      }
-    });
-  };
 
   const handleDeleteTask = (id) => {
     const taskToDelete = tasks.find(t => t.id === id);
@@ -247,12 +220,14 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
       onConfirm: async () => {
         setConfirmModalState(prev => ({ ...prev, isOpen: false }));
         try {
-          if (project) {
-            await api.deleteTask(project.id, id);
+          if (selectedProject) {
+            await api.deleteTask(selectedProject.id, id);
             const nextTasks = tasks.filter(t => t.id !== id);
             setTasks(nextTasks);
+            selectedProject.tasks = nextTasks;
+            setSelectedProject({ ...selectedProject });
             if (onUpdateTasks) {
-              onUpdateTasks(nextTasks, project.id);
+              onUpdateTasks(nextTasks, selectedProject.id);
             }
             showToast('Task deleted successfully!', 'success');
           }
@@ -264,6 +239,42 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
     });
   };
 
+  const handleEditClick = (task) => {
+    setEditingTask(task);
+    setFormData({
+      name: task.name,
+      student: task.student || '',
+      priority: task.priority || 'High',
+      deadline: task.deadline || '',
+      description: task.description || '',
+      taskType: task.taskType || 'Feature'
+    });
+    setExistingDocuments(task.documents || []);
+    setReferenceLinks(task.referenceLinks || []);
+    setSelectedFiles([]);
+    setLinkInput('');
+    setSelectedModalProject(selectedProject || projects.find(p => p.id === task.projectId) || projects[0]);
+    setModalOpen(true);
+  };
+
+  const handleCreateClick = () => {
+    setEditingTask(null);
+    setFormData({
+      name: '',
+      student: teamMembers[0] || '',
+      priority: 'High',
+      deadline: '',
+      description: '',
+      taskType: 'Feature'
+    });
+    setExistingDocuments([]);
+    setReferenceLinks([]);
+    setSelectedFiles([]);
+    setLinkInput('');
+    setSelectedModalProject(selectedProject || projects[0]);
+    setModalOpen(true);
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.deadline) {
@@ -271,63 +282,130 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
       return;
     }
 
-    if (formData.deadline < todayStr) {
+    if (!editingTask && formData.deadline < todayStr) {
       showToast('Task deadline cannot be in the past. Please select today or a future date.', 'error');
       return;
     }
 
+    const actionTitle = editingTask ? 'Save Task Changes?' : 'Assign New Task?';
+    const actionMessage = editingTask
+      ? `Do you want to save changes for "${formData.name}"?`
+      : `Assign "${formData.name}" to ${formData.student || 'team member'} with due date ${formData.deadline}?`;
+    const actionConfirmText = editingTask ? 'Save Changes' : 'Assign Task';
+
     setConfirmModalState({
       isOpen: true,
-      title: 'Assign New Task?',
-      message: `Assign "${formData.name}" to ${formData.student || 'team member'} with due date ${formData.deadline}?`,
-      confirmText: 'Assign Task',
+      title: actionTitle,
+      message: actionMessage,
+      confirmText: actionConfirmText,
       cancelText: 'Cancel',
       variant: 'primary',
-      onConfirm: () => {
+      onConfirm: async () => {
         setConfirmModalState(prev => ({ ...prev, isOpen: false }));
-        const newTask = {
-          id: `tk-${Date.now()}`,
-          name: formData.name,
-          student: formData.student,
-          priority: formData.priority,
-          deadline: formData.deadline,
-          status: 'Pending'
-        };
-
-        if (selectedModalProject && project && selectedModalProject.id === project.id) {
-          const nextTasks = [...tasks, newTask];
-          setTasks(nextTasks);
-        }
         
+        // Upload newly selected files
+        let uploadedDocs = [];
+        if (selectedFiles.length > 0) {
+          setUploading(true);
+          try {
+            uploadedDocs = await Promise.all(selectedFiles.map(async (file) => {
+              try {
+                const res = await api.uploadFile(file);
+                await fileStorage.saveFile(res.id, file);
+                return {
+                  fileName: file.name,
+                  fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+                  fileUrl: res.fileUrl,
+                  fileId: res.id
+                };
+              } catch (uploadErr) {
+                console.warn('Task file upload failed:', file.name, uploadErr);
+                const localId = `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                await fileStorage.saveFile(localId, file);
+                return {
+                  fileName: file.name,
+                  fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+                  fileUrl: `local-file:${localId}`,
+                  fileId: localId
+                };
+              }
+            }));
+          } catch (err) {
+            console.error('Task uploads failed:', err);
+          } finally {
+            setUploading(false);
+          }
+        }
+
+        const mergedDocuments = [...existingDocuments, ...uploadedDocs];
+
+        let nextTasks;
+        if (editingTask) {
+          nextTasks = tasks.map(t =>
+            t.id === editingTask.id ? {
+              ...t,
+              name: formData.name,
+              student: formData.student,
+              priority: formData.priority,
+              deadline: formData.deadline,
+              description: formData.description,
+              taskType: formData.taskType || 'Feature',
+              documents: mergedDocuments,
+              referenceLinks: referenceLinks
+            } : t
+          );
+          showToast('Task updated successfully!', 'success');
+        } else {
+          const newTask = {
+            id: `tk-${Date.now()}`,
+            name: formData.name,
+            student: formData.student,
+            priority: formData.priority,
+            deadline: formData.deadline,
+            status: 'In Progress',
+            description: formData.description,
+            taskType: formData.taskType || 'Feature',
+            documents: mergedDocuments,
+            referenceLinks: referenceLinks
+          };
+          nextTasks = [...tasks, newTask];
+
+          try {
+            const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+            const studentUser = registeredUsers.find(u => 
+              u.name?.trim().toLowerCase() === formData.student?.trim().toLowerCase() || 
+              u.fullName?.trim().toLowerCase() === formData.student?.trim().toLowerCase()
+            );
+            const studentEmail = studentUser ? studentUser.email : null;
+            const studentTeam = studentUser ? studentUser.team : (selectedModalProject ? selectedModalProject.teamName : null);
+            if (studentEmail) {
+              addNotification(
+                'New Task Assigned',
+                `Task "${formData.name}" has been assigned to you.`,
+                studentEmail,
+                studentTeam,
+                'info'
+              );
+            }
+          } catch (err) {
+            console.error('Failed to dispatch task assignment notification:', err);
+          }
+
+          showToast('Task assigned successfully!', 'success');
+        }
+
+        setTasks(nextTasks);
         if (onUpdateTasks && selectedModalProject) {
-          const nextTasks = [...(selectedModalProject.tasks || []), newTask];
           onUpdateTasks(nextTasks, selectedModalProject.id);
         }
 
-        try {
-          const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-          const studentUser = registeredUsers.find(u => 
-            u.name?.trim().toLowerCase() === formData.student?.trim().toLowerCase() || 
-            u.fullName?.trim().toLowerCase() === formData.student?.trim().toLowerCase()
-          );
-          const studentEmail = studentUser ? studentUser.email : null;
-          const studentTeam = studentUser ? studentUser.team : (selectedModalProject ? selectedModalProject.teamName : null);
-          if (studentEmail) {
-            addNotification(
-              'New Task Assigned',
-              `Task "${formData.name}" has been assigned to you.`,
-              studentEmail,
-              studentTeam,
-              'info'
-            );
-          }
-        } catch (err) {
-          console.error('Failed to dispatch task assignment notification:', err);
-        }
-
-        showToast('Task assigned successfully!', 'success');
         setModalOpen(false);
-        setFormData({ name: '', student: '', priority: 'High', deadline: '', description: '' });
+        setEditingTask(null);
+        setFormData({ name: '', student: '', priority: 'High', deadline: '', description: '', taskType: 'Feature' });
+        setExistingDocuments([]);
+        setReferenceLinks([]);
+        setSelectedFiles([]);
+        setLinkInput('');
       }
     });
   };
@@ -348,16 +426,110 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
     switch (status) {
       case 'Completed':
         return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
+      case 'Under Review':
+        return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
+      case 'Rejected & Reassigned':
+        return 'bg-rose-500/10 text-rose-500 border-rose-500/20';
       case 'In Progress':
-        return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-      case 'Pending':
       default:
-        return 'bg-slate-500/10 text-brand-text-muted border-brand-border';
+        return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
     }
   };
 
+  const resolveStatus = (task) => {
+    if (!task) return 'In Progress';
+    if (task.reportSubmitted && task.reportDetails) {
+      const repStatus = task.reportDetails.status || task.reportDetails.submissionStatus;
+      if (repStatus === 'Approved') {
+        return 'Completed';
+      } else if (repStatus === 'Reassigned') {
+        return 'Rejected & Reassigned';
+      } else {
+        return 'Under Review';
+      }
+    }
+    if (task.isReassigned) {
+      return 'Rejected & Reassigned';
+    }
+    if (!task.status || task.status === 'Pending') {
+      return 'In Progress';
+    }
+    return task.status;
+  };
+
+  if (!selectedProject) {
+    return (
+      <div className="space-y-6 w-full text-left animate-fade-in">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-extrabold text-brand-text mb-1 tracking-tight">
+            Team Projects
+          </h2>
+          <p className="text-xs sm:text-sm text-brand-text-muted">
+            Select a project below to view its tasks.
+          </p>
+        </div>
+
+        {projects.length === 0 ? (
+          <div className="p-12 text-center rounded-2xl border border-dashed border-brand-border bg-brand-card/20 text-brand-text-muted text-sm font-semibold select-none">
+            No projects found.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {projects.map((proj) => (
+              <div key={proj.id} className="p-5 rounded-2xl border border-brand-border bg-brand-card/45 backdrop-blur-md shadow-md flex flex-col justify-between hover:shadow-xl transition-all duration-300">
+                <div className="space-y-2">
+                  <h3 className="text-sm font-extrabold text-brand-text tracking-tight">
+                    {proj.name}
+                  </h3>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-secondary uppercase tracking-widest block">
+                      {proj.domain}
+                    </span>
+                    <span className="text-[10px] font-bold text-brand-text-muted block">
+                      Team Name: {proj.teamName || 'Not Assigned'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-brand-text-muted/80 line-clamp-2 leading-relaxed">
+                    {proj.description}
+                  </p>
+                </div>
+
+                <div className="pt-4 border-t border-brand-border/40 mt-4 flex items-center justify-between">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${
+                    proj.status === 'Completed'
+                      ? 'text-blue-500 bg-blue-500/10 border-blue-500/20'
+                      : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
+                  }`}>
+                    {proj.status}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProject(proj)}
+                    className="px-4 py-2 rounded-xl bg-primary text-white font-bold text-xs uppercase tracking-wider hover:shadow-glow-primary hover-lift transition-all duration-300 cursor-pointer"
+                  >
+                    View Tasks
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 w-full text-left relative animate-fade-in">
+      {/* Back button */}
+      <button
+        type="button"
+        onClick={() => setSelectedProject(null)}
+        className="flex items-center gap-2 text-xs font-bold text-brand-text-muted hover:text-brand-text uppercase tracking-wider transition-colors duration-300 group focus:outline-none cursor-pointer mb-2"
+      >
+        <FiArrowLeft className="w-4 h-4 transition-transform duration-300 group-hover:-translate-x-1" />
+        <span>Back to Projects</span>
+      </button>
+
       {toast && toast.type === 'success' && (
         <div className="p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 text-xs font-semibold flex items-center justify-between animate-fade-in w-full">
           <span>{toast.message}</span>
@@ -378,7 +550,7 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
 
         <button
           type="button"
-          onClick={() => setModalOpen(true)}
+          onClick={handleCreateClick}
           className="px-5 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-xs uppercase tracking-wider hover:shadow-glow-primary hover-lift transition-all duration-300 inline-flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer self-start sm:self-auto"
         >
           <FiPlus className="w-4 h-4" />
@@ -401,18 +573,25 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
                 </span>
                 
                 <div className="flex items-center gap-2">
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-colors ${getStatusBadge(resolveStatus(task))}`}
+                  >
+                    {resolveStatus(task)}
+                  </span>
+
                   <button
                     type="button"
-                    onClick={() => handleToggleStatus(task.id)}
-                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-colors cursor-pointer ${getStatusBadge(task.status)}`}
+                    onClick={() => handleEditClick(task)}
+                    className="p-1.5 rounded-lg border border-transparent hover:border-primary/20 text-brand-text-muted hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                    title="Edit Task"
                   >
-                    {task.status}
+                    <FiEdit className="w-3.5 h-3.5" />
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleDeleteTask(task.id)}
-                    className="p-1.5 rounded-lg border border-transparent hover:border-rose-500/20 text-brand-text-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                    className="p-1.5 rounded-lg border border-transparent hover:border-rose-500/20 text-brand-text-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
                     title="Delete Task"
                   >
                     <FiTrash2 className="w-3.5 h-3.5" />
@@ -420,9 +599,59 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
                 </div>
               </div>
 
-              <h3 className="text-sm font-bold text-brand-text leading-snug">
-                {task.name}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-extrabold text-brand-text leading-snug">
+                  {task.name}
+                </h3>
+                <span className={`px-2 py-0.5 rounded text-[8px] font-extrabold uppercase border ${
+                  task.taskType === 'Bug' 
+                    ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' 
+                    : task.taskType === 'Feature'
+                    ? 'bg-primary/10 text-primary border-primary/20'
+                    : task.taskType === 'Research'
+                    ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                    : task.taskType === 'Documentation'
+                    ? 'bg-sky-500/10 text-sky-500 border-sky-500/20'
+                    : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                }`}>
+                  {task.taskType || 'Feature'}
+                </span>
+              </div>
+              
+              {task.description && (
+                <p className="text-[11px] text-brand-text-muted leading-relaxed font-medium">
+                  {task.description}
+                </p>
+              )}
+
+              {/* Task Resources */}
+              {((task.documents && task.documents.length > 0) || (task.referenceLinks && task.referenceLinks.length > 0)) && (
+                <div className="pt-2 border-t border-brand-border/20 space-y-1.5">
+                  {task.documents && task.documents.map((doc, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-[10px] text-brand-text-muted">
+                      <span className="flex items-center gap-1.5 truncate max-w-[150px] font-semibold">
+                        <FiFileText className="w-3.5 h-3.5 text-primary shrink-0" />
+                        {doc.fileName}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDownload(doc)}
+                        className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-[9px] font-bold text-brand-text uppercase transition-colors cursor-pointer"
+                      >
+                        Download
+                      </button>
+                    </div>
+                  ))}
+                  {task.referenceLinks && task.referenceLinks.map((link, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5 text-[10px] text-brand-text-muted">
+                      <FiLink className="w-3.5 h-3.5 text-secondary shrink-0" />
+                      <a href={link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-bold truncate block max-w-[200px]" title={link}>
+                        {link}
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Bottom info */}
@@ -494,7 +723,7 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
             
             <div className="flex items-center justify-between pb-3.5 border-b border-brand-border mb-5">
               <h3 className="text-sm font-extrabold uppercase tracking-widest text-brand-text">
-                Assign Project Task
+                {editingTask ? 'Edit Project Task' : 'Assign Project Task'}
               </h3>
               <button type="button" onClick={() => setModalOpen(false)} className="p-1 rounded-full border border-brand-border text-brand-text-muted hover:text-brand-text hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none cursor-pointer">
                 <FiX className="w-4 h-4" />
@@ -508,7 +737,7 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {projects.length > 0 && (
+              {projects.length > 0 && !editingTask && (
                 <div>
                   <label className="text-[10px] font-bold text-brand-text-muted uppercase block mb-1.5">Select Project / Team</label>
                   <select
@@ -578,12 +807,28 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
                 <input
                   type="date"
                   name="deadline"
-                  min={todayStr}
+                  min={editingTask ? undefined : todayStr}
                   value={formData.deadline}
                   onChange={handleChange}
                   className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm"
                   required
                 />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-brand-text-muted uppercase block mb-1.5">Task Type</label>
+                <select
+                  name="taskType"
+                  value={formData.taskType}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm cursor-pointer"
+                >
+                  <option value="Feature" className="bg-brand-card">Feature Development</option>
+                  <option value="Bug" className="bg-brand-card">Bug Fix</option>
+                  <option value="Research" className="bg-brand-card">Research / Study</option>
+                  <option value="Documentation" className="bg-brand-card">Documentation</option>
+                  <option value="Testing" className="bg-brand-card">Testing & QA</option>
+                </select>
               </div>
 
               <div>
@@ -596,6 +841,129 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
                   placeholder="Detail work package specs..."
                   className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text focus:outline-none focus:border-primary/50 text-sm"
                 />
+              </div>
+
+              {/* Task Documents Upload */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider block">
+                  Task Documents
+                </label>
+                
+                {/* Existing attached documents */}
+                {existingDocuments.length > 0 && (
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                    {existingDocuments.map((doc, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 rounded-lg border border-brand-border bg-slate-100/50 dark:bg-slate-900/10 text-xs">
+                        <span className="text-brand-text font-semibold flex items-center gap-1.5 truncate max-w-[280px]">
+                          <FiFileText className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                          {doc.fileName}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setExistingDocuments(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-1 rounded text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                        >
+                          <FiTrash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Newly selected files */}
+                {selectedFiles.length > 0 && (
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                    {selectedFiles.map((file, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 rounded-lg border border-brand-border bg-emerald-500/5 text-xs">
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5 truncate max-w-[280px]">
+                          <FiUpload className="w-3.5 h-3.5 flex-shrink-0 animate-bounce" />
+                          {file.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-1 rounded text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                        >
+                          <FiTrash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="relative">
+                  <input
+                    type="file"
+                    id="task-docs"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files) {
+                        const newFiles = Array.from(e.target.files);
+                        setSelectedFiles(prev => [...prev, ...newFiles]);
+                      }
+                    }}
+                  />
+                  <label
+                    htmlFor="task-docs"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-brand-border hover:border-primary bg-slate-50/30 dark:bg-slate-900/10 text-brand-text-muted hover:text-brand-text text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    <FiPaperclip className="w-4 h-4" />
+                    <span>Upload Task Documents</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Task Reference Links */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider block">
+                  Task Reference Links
+                </label>
+
+                {/* List of links */}
+                {referenceLinks.length > 0 && (
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                    {referenceLinks.map((link, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 rounded-lg border border-brand-border bg-slate-100/50 dark:bg-slate-900/10 text-xs">
+                        <span className="text-brand-text font-semibold flex items-center gap-1.5 truncate max-w-[280px]">
+                          <FiLink className="w-3.5 h-3.5 text-secondary flex-shrink-0" />
+                          <a href={link} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary">{link}</a>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setReferenceLinks(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-1 rounded text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                        >
+                          <FiTrash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={linkInput}
+                    onChange={(e) => setLinkInput(e.target.value)}
+                    placeholder="https://example.com/resource"
+                    className="flex-1 px-4 py-2 rounded-xl border border-brand-border bg-slate-50/50 dark:bg-slate-900/30 text-brand-text placeholder-slate-400 focus:outline-none focus:border-primary/50 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (linkInput.trim() && (linkInput.startsWith('http://') || linkInput.startsWith('https://'))) {
+                        setReferenceLinks(prev => [...prev, linkInput.trim()]);
+                        setLinkInput('');
+                      } else {
+                        showToast('Please enter a valid link starting with http:// or https://', 'error');
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-brand-text font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
 
               {/* Action Buttons */}
@@ -612,7 +980,7 @@ const Tasks = ({ project, teamName, projects = [], onUpdateTasks }) => {
                   className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-xs uppercase tracking-wider hover:shadow-glow-primary transition-all duration-300 flex items-center gap-1.5 focus:outline-none cursor-pointer"
                 >
                   <FiCheck className="w-4 h-4" />
-                  <span>Assign Task</span>
+                  <span>{editingTask ? 'Save Changes' : 'Assign Task'}</span>
                 </button>
               </div>
 

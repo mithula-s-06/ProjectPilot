@@ -37,6 +37,92 @@ const ReportReview = ({ report, onBack, onUpdateReportStatus, projects }) => {
     return false;
   })();
 
+  const matchedReportDetails = (() => {
+    if (!localReport || !projects) return null;
+    
+    // 1. Try to resolve actual DB match
+    if (localReport.matchedReportId) {
+      for (const proj of projects) {
+        if (proj.weeklyReports) {
+          const found = proj.weeklyReports.find(r => r.id === localReport.matchedReportId);
+          if (found) {
+            return {
+              report: found,
+              projectName: proj.name,
+              teamName: proj.teamName,
+              studentName: null,
+              week: found.week
+            };
+          }
+        }
+        if (proj.tasks) {
+          for (const t of proj.tasks) {
+            if (t.reportDetails && t.reportDetails.id === localReport.matchedReportId) {
+              return {
+                report: t.reportDetails,
+                projectName: proj.name,
+                teamName: proj.teamName,
+                studentName: t.assignedTo,
+                week: t.reportDetails.week || t.title
+              };
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Mock Fallback for Demo (if similarity is flagged but matchedReportId is missing/invalid)
+    if ((localReport.similarityScore || 0) >= 50) {
+      const otherProj = projects.find(p => p.id !== localReport.projectId) || projects[0] || { name: 'Alpha Core System', teamName: 'Team Cyber' };
+      return {
+        report: {
+          id: 'mock-matched-id',
+          fileName: 'Mock_Similarity_Reference.txt',
+          week: localReport.week || 'Week 2'
+        },
+        projectName: otherProj.name,
+        teamName: otherProj.teamName || 'Team Delta',
+        studentName: 'Mithula S',
+        week: localReport.week || 'Week 2'
+      };
+    }
+
+    return null;
+  })();
+
+  const handleDownloadMatchedDoc = async (reportItem) => {
+    if (!reportItem) return;
+    const fileName = reportItem.fileName || 'matched_document.pdf';
+    const fileUrl = reportItem.fileUrl;
+    const fileId = reportItem.fileId || null;
+
+    if (!fileId && (!fileUrl || fileUrl === '#' || fileUrl === 'undefined' || fileUrl === 'null' || fileUrl.endsWith('/api/files/download/'))) {
+      setToast('No downloadable file attachment is associated with this matched report.');
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+
+    try {
+      const blob = await api.downloadFile(fileId || fileUrl);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download matched document:', err);
+      if (fileUrl && fileUrl !== '#' && fileUrl !== 'undefined' && fileUrl !== 'null' && !fileUrl.endsWith('/api/files/download/')) {
+        window.open(fileUrl, '_blank');
+      } else {
+        setToast('Failed to download document: file attachment is offline or missing.');
+        setTimeout(() => setToast(null), 4000);
+      }
+    }
+  };
+
   const handleReanalyze = async () => {
     if (analyzing) return;
     setAnalyzing(true);
@@ -138,11 +224,11 @@ const ReportReview = ({ report, onBack, onUpdateReportStatus, projects }) => {
                   <FiRefreshCw className="w-3.5 h-3.5" />
                 </button>
                 <span className={`text-[9px] px-2 py-0.5 rounded font-extrabold uppercase border ${
-                  ((localReport.similarityScore || 0) >= 30 || (localReport.aiGeneratedScore || 0) >= 70)
+                  ((localReport.similarityScore || 0) >= 50 || (localReport.aiGeneratedScore || 0) >= 60)
                     ? 'bg-rose-500/10 text-rose-500 border-rose-500/20'
                     : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                 }`}>
-                  {((localReport.similarityScore || 0) >= 30 || (localReport.aiGeneratedScore || 0) >= 70) ? 'Flagged' : 'Clear'}
+                  {((localReport.similarityScore || 0) >= 50 || (localReport.aiGeneratedScore || 0) >= 60) ? 'Flagged' : 'Clear'}
                 </span>
               </div>
             </h3>
@@ -152,18 +238,18 @@ const ReportReview = ({ report, onBack, onUpdateReportStatus, projects }) => {
               <div className="space-y-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="font-extrabold text-brand-text-muted">Semantic Similarity</span>
-                  <span className={`font-bold ${(localReport.similarityScore || 0) >= 30 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                  <span className={`font-bold ${(localReport.similarityScore || 0) >= 50 ? 'text-rose-500' : 'text-emerald-500'}`}>
                     {localReport.similarityScore || 0}%
                   </span>
                 </div>
                 <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
                   <div 
-                    className={`h-full rounded-full transition-all duration-500 ${(localReport.similarityScore || 0) >= 30 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                    className={`h-full rounded-full transition-all duration-500 ${(localReport.similarityScore || 0) >= 50 ? 'bg-rose-500' : 'bg-emerald-500'}`}
                     style={{ width: `${Math.min(localReport.similarityScore || 0, 100)}%` }}
                   />
                 </div>
                 <p className="text-[10px] text-brand-text-muted/70 leading-relaxed font-semibold">
-                  {(localReport.similarityScore || 0) >= 30 
+                  {(localReport.similarityScore || 0) >= 50 
                     ? "⚠️ Matches other documents in the database. Potential plagiarism." 
                     : "✓ Low similarity. Content appears unique."}
                 </p>
@@ -173,23 +259,51 @@ const ReportReview = ({ report, onBack, onUpdateReportStatus, projects }) => {
               <div className="space-y-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="font-extrabold text-brand-text-muted">AI-Generated Probability</span>
-                  <span className={`font-bold ${(localReport.aiGeneratedScore || 0) >= 70 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                  <span className={`font-bold ${(localReport.aiGeneratedScore || 0) >= 60 ? 'text-rose-500' : 'text-emerald-500'}`}>
                     {localReport.aiGeneratedScore || 0}%
                   </span>
                 </div>
                 <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
                   <div 
-                    className={`h-full rounded-full transition-all duration-500 ${(localReport.aiGeneratedScore || 0) >= 70 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                    className={`h-full rounded-full transition-all duration-500 ${(localReport.aiGeneratedScore || 0) >= 60 ? 'bg-rose-500' : 'bg-emerald-500'}`}
                     style={{ width: `${Math.min(localReport.aiGeneratedScore || 0, 100)}%` }}
                   />
                 </div>
                 <p className="text-[10px] text-brand-text-muted/70 leading-relaxed font-semibold">
-                  {(localReport.aiGeneratedScore || 0) >= 70 
+                  {(localReport.aiGeneratedScore || 0) >= 60 
                     ? "⚠️ High probability of AI-generated content (e.g. ChatGPT)." 
                     : "✓ Text characteristics match natural human writing styles."}
                 </p>
               </div>
             </div>
+
+            {matchedReportDetails && (
+              <div className="mt-4 p-4 rounded-xl border border-rose-500/20 bg-rose-500/5 space-y-2 animate-scale-up text-left">
+                <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider block">
+                  Similarity Found With:
+                </span>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <FiFileText className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadMatchedDoc(matchedReportDetails.report)}
+                      className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline hover:text-rose-500 text-left truncate max-w-[280px] cursor-pointer focus:outline-none"
+                    >
+                      {matchedReportDetails.report.fileName || matchedReportDetails.report.title || 'View Matched Document'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-brand-text-muted leading-relaxed">
+                    <strong>Project:</strong> {matchedReportDetails.projectName} <br />
+                    <strong>Team:</strong> {matchedReportDetails.teamName || 'N/A'} <br />
+                    {matchedReportDetails.studentName && (
+                      <><strong>Submitted By:</strong> {matchedReportDetails.studentName} <br /></>
+                    )}
+                    <strong>Week / Task:</strong> {matchedReportDetails.week || 'N/A'}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Decision Box */}

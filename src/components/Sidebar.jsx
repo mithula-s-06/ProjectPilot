@@ -1,7 +1,6 @@
-import React from 'react';
 import { 
   FiHome, FiUsers, FiUser, FiSettings, 
-  FiLogOut, FiChevronLeft, FiChevronRight 
+  FiLogOut, FiChevronLeft, FiChevronRight, FiFileText
 } from 'react-icons/fi';
 
 const Sidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLogout }) => {
@@ -10,6 +9,7 @@ const Sidebar = ({ activeTab, setActiveTab, collapsed, setCollapsed, onLogout })
     { id: 'dashboard', label: 'Dashboard', icon: <FiHome className="w-5 h-5" /> },
     { id: 'teams', label: 'Teams', icon: <FiUsers className="w-5 h-5" /> },
     { id: 'users', label: 'Users', icon: <FiUser className="w-5 h-5" /> },
+    { id: 'submissions', label: 'Submissions', icon: <FiFileText className="w-5 h-5" /> },
   ];
 
   const bottomMenuItems = [

@@ -3,6 +3,9 @@ package com.project.entity;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 @Document(collection = "tasks")
 public class Task {
@@ -19,6 +22,10 @@ public class Task {
     private WeeklyReport reportDetails;
     private Boolean isReassigned = false;
     private String reassignFeedback;
+    private String description;
+    private String taskType;
+    private List<Map<String, Object>> documents = new ArrayList<>();
+    private List<String> referenceLinks = new ArrayList<>();
 
     public Task() {}
 
@@ -93,4 +100,16 @@ public class Task {
 
     public String getReassignFeedback() { return reassignFeedback; }
     public void setReassignFeedback(String reassignFeedback) { this.reassignFeedback = reassignFeedback; }
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+
+    public String getTaskType() { return taskType; }
+    public void setTaskType(String taskType) { this.taskType = taskType; }
+
+    public List<Map<String, Object>> getDocuments() { return documents; }
+    public void setDocuments(List<Map<String, Object>> documents) { this.documents = documents; }
+
+    public List<String> getReferenceLinks() { return referenceLinks; }
+    public void setReferenceLinks(List<String> referenceLinks) { this.referenceLinks = referenceLinks; }
 }

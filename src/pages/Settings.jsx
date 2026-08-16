@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FiSliders, FiBell, FiLock, FiCpu, FiCheck } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
 import { useTheme } from '../hooks/useTheme';
 import ConfirmModal from '../components/ConfirmModal';
+import { api } from '../utils/api';
 
 const Settings = () => {
   const { currentPage } = usePage();
@@ -33,6 +34,28 @@ const Settings = () => {
     };
   });
 
+  useEffect(() => {
+    async function loadBackendPrefs() {
+      try {
+        const users = await api.listUsers();
+        const myUserRecord = (users || []).find(u => u && u.email && u.email.toLowerCase() === userEmail.toLowerCase());
+        if (myUserRecord) {
+          setSettingsState(prev => ({
+            ...prev,
+            feedbackNotifications: myUserRecord.feedbackNotifications !== undefined ? myUserRecord.feedbackNotifications : prev.feedbackNotifications,
+            reportDueAlerts: myUserRecord.reportDueAlerts !== undefined ? myUserRecord.reportDueAlerts : prev.reportDueAlerts,
+            riskAlerts: myUserRecord.riskAlerts !== undefined ? myUserRecord.riskAlerts : prev.riskAlerts,
+          }));
+        }
+      } catch (err) {
+        console.warn("Failed to load settings from database:", err);
+      }
+    }
+    if (currentUser.email) {
+      loadBackendPrefs();
+    }
+  }, [userEmail]);
+
   const handleToggle = (key) => {
     setSettingsState((prev) => ({
       ...prev,
@@ -52,7 +75,7 @@ const Settings = () => {
     setShowConfirmModal(true);
   };
 
-  const executeSave = () => {
+  const executeSave = async () => {
     setShowConfirmModal(false);
     const isPlatformAdmin = currentUser.role === 'System Administrator' || currentUser.role === 'Admin';
 
@@ -64,6 +87,22 @@ const Settings = () => {
     };
     localStorage.setItem(notifStorageKey, JSON.stringify(notifPrefs));
     localStorage.setItem('userNotificationPreferences', JSON.stringify(notifPrefs));
+
+    // 2. Sync to backend database
+    try {
+      const users = await api.listUsers();
+      const myUserRecord = (users || []).find(u => u && u.email && u.email.toLowerCase() === userEmail.toLowerCase());
+      if (myUserRecord) {
+        await api.updateUserProfile(myUserRecord.id, {
+          ...myUserRecord,
+          feedbackNotifications: settingsState.feedbackNotifications,
+          reportDueAlerts: settingsState.reportDueAlerts,
+          riskAlerts: settingsState.riskAlerts
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to sync settings to database:", err);
+    }
 
     // 3. Admin platform properties
     if (isPlatformAdmin) {

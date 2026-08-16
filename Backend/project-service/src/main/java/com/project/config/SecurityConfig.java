@@ -46,6 +46,7 @@ public class SecurityConfig {
                     // this same rule set - and since it's not permitted, you
                     // see a misleading 403 instead of the real 500.
                     .requestMatchers("/error").permitAll()
+                    .requestMatchers("/api/files/upload", "/api/files/download/**", "/api/users/extract-skills").permitAll()
                     // Read access: any logged-in user with any project role.
                     .requestMatchers(HttpMethod.GET, "/api/users/**", "/api/projects/**", "/api/teams/**", "/api/notifications/**", "/api/files/**")
                         .hasAnyRole("STUDENT", "TEAM_LEADER", "MENTOR", "ADMIN")

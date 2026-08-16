@@ -14,6 +14,7 @@ public class SimilarityRecord {
     private String matchedReportId;
     private Double similarityScore;
     private LocalDateTime analyzedAt;
+    private double[] embedding;
 
     public SimilarityRecord() {}
 
@@ -42,4 +43,7 @@ public class SimilarityRecord {
 
     public LocalDateTime getAnalyzedAt() { return analyzedAt; }
     public void setAnalyzedAt(LocalDateTime analyzedAt) { this.analyzedAt = analyzedAt; }
+
+    public double[] getEmbedding() { return embedding; }
+    public void setEmbedding(double[] embedding) { this.embedding = embedding; }
 }
