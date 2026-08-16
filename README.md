@@ -1067,11 +1067,6 @@ git push origin feature/your-feature
 
 ---
 
-# 📜 License
-
-Add the project's preferred license here before publishing the repository publicly.
-
----
 
 ## ProjectPilot
 
