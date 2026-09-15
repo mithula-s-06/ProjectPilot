@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.0</version>
+        <version>3.4.3</version>
         <relativePath/>
     </parent>
 
@@ -18,7 +18,9 @@
 
     <properties>
         <java.version>21</java.version>
-        <jjwt.version>0.13.0</jjwt.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <jjwt.version>0.12.6</jjwt.version>
     </properties>
 
     <dependencies>
@@ -56,15 +58,9 @@
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
-        <!--
-          jjwt-gson, not jjwt-jackson: JJWT's Jackson module still depends on
-          Jackson 2, which conflicts with Spring Boot 4's default Jackson 3.
-          Gson sidesteps the conflict entirely. No code changes needed - JJWT
-          auto-discovers whichever serializer module is on the classpath.
-        -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-gson</artifactId>
+            <artifactId>jjwt-jackson</artifactId>
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>

@@ -7,23 +7,20 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.0</version>
+        <version>3.4.3</version>
         <relativePath/>
     </parent>
 
     <groupId>com.projectpilot</groupId>
     <artifactId>project-service</artifactId>
     <version>1.0.0</version>
-    <!--
-      Was "war" in the single-app version (needed for JSP). Now this service
-      only returns JSON, so it's back to a plain executable jar - no embedded
-      Jasper/JSTL/Tomcat-provided dependencies needed either.
-    -->
     <packaging>jar</packaging>
 
     <properties>
         <java.version>21</java.version>
-        <jjwt.version>0.13.0</jjwt.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <jjwt.version>0.12.6</jjwt.version>
     </properties>
 
     <dependencies>
@@ -40,7 +37,7 @@
             <artifactId>spring-boot-starter-data-mongodb</artifactId>
         </dependency>
 
-        <!-- JJWT - only used here to VERIFY tokens issued by auth-service -->
+        <!-- JJWT - verify tokens issued by auth-service -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
@@ -52,15 +49,9 @@
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
-        <!--
-          jjwt-gson, not jjwt-jackson: JJWT's Jackson module still depends on
-          Jackson 2, which conflicts with Spring Boot 4's default Jackson 3.
-          Gson sidesteps the conflict entirely. No code changes needed - JJWT
-          auto-discovers whichever serializer module is on the classpath.
-        -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-gson</artifactId>
+            <artifactId>jjwt-jackson</artifactId>
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>

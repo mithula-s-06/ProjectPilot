@@ -82,6 +82,26 @@ public class UserService {
         userRepository.deleteById(id);
     }
 
+    private void sanitizeUserSkills(User user) {
+        if (user != null && user.getSkills() != null) {
+            java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+            java.util.List<String> cleaned = new java.util.ArrayList<>();
+            for (String s : user.getSkills()) {
+                if (s != null && !s.trim().isEmpty()) {
+                    String trimmed = s.trim();
+                    trimmed = trimmed.replaceAll("(?i)^(languages|programming\\s+languages|frameworks|libraries|databases|tools|technologies|platforms|cloud|concepts|others)\\s*:\\s*", "").trim();
+                    if (!trimmed.isEmpty()) {
+                        String key = trimmed.toLowerCase().replaceAll("[\\s\\-_.:]", "");
+                        if (seen.add(key)) {
+                            cleaned.add(trimmed);
+                        }
+                    }
+                }
+            }
+            user.setSkills(cleaned);
+        }
+    }
+
     private void validateUser(User user) {
         if (user.getName() == null || user.getName().trim().isEmpty()) {
             throw new IllegalArgumentException("User name is required");
@@ -94,5 +114,7 @@ public class UserService {
         if (user.getDepartment() == null || user.getDepartment().trim().isEmpty()) {
             throw new IllegalArgumentException("Department is required");
         }
+
+        sanitizeUserSkills(user);
     }
 }

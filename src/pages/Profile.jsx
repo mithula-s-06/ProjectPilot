@@ -4,7 +4,7 @@ import {
   FiBookOpen, FiAward, FiCheck, FiX, FiAlertCircle 
 } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
-import { api, addNotification } from '../utils/api';
+import { api, addNotification, cleanAndDeduplicateSkills } from '../utils/api';
 
 const Profile = () => {
   const { currentPage } = usePage();
@@ -104,7 +104,7 @@ const Profile = () => {
           resumeId: userRecord.resumeId || '',
           resumeName: userRecord.resumeName || '',
           resumeUrl: userRecord.resumeUrl || '',
-          skills: userRecord.skills || []
+          skills: cleanAndDeduplicateSkills(userRecord.skills || [])
         };
       }
     } catch (e) {
@@ -136,7 +136,7 @@ const Profile = () => {
             resumeId: myUserRecord.resumeId || '',
             resumeName: myUserRecord.resumeName || '',
             resumeUrl: myUserRecord.resumeUrl || '',
-            skills: myUserRecord.skills || []
+            skills: cleanAndDeduplicateSkills(myUserRecord.skills || [])
           };
           localStorage.setItem('currentUser', JSON.stringify(updatedUser));
 
@@ -236,7 +236,7 @@ const Profile = () => {
           resumeId: u.resumeId || '',
           resumeName: u.resumeName || '',
           resumeUrl: u.resumeUrl || '',
-          skills: u.skills || []
+          skills: cleanAndDeduplicateSkills(u.skills || [])
         }));
 
         localStorage.setItem('registeredUsers', JSON.stringify(mappedUsers));
@@ -279,12 +279,14 @@ const Profile = () => {
     if (e.key === 'Enter' || e.type === 'click') {
       e.preventDefault();
       const val = skillInput.trim();
-      const skillsList = editForm.skills || [];
-      if (val && !skillsList.includes(val)) {
-        setEditForm(prev => ({
-          ...prev,
-          skills: [...(prev.skills || []), val]
-        }));
+      if (val) {
+        setEditForm(prev => {
+          const currentSkills = prev.skills || [];
+          return {
+            ...prev,
+            skills: cleanAndDeduplicateSkills([...currentSkills, val])
+          };
+        });
         setSkillInput('');
       }
     }
@@ -317,14 +319,10 @@ const Profile = () => {
         try {
           const extractedSkills = await api.extractSkills(response.id);
           if (extractedSkills && extractedSkills.length > 0) {
-            setEditForm(prev => {
-              const existing = prev.skills || [];
-              const combined = Array.from(new Set([...existing, ...extractedSkills]));
-              return {
-                ...prev,
-                skills: combined
-              };
-            });
+            setEditForm(prev => ({
+              ...prev,
+              skills: cleanAndDeduplicateSkills(extractedSkills)
+            }));
           }
         } catch (extractErr) {
           console.warn("Skill extraction failed:", extractErr);

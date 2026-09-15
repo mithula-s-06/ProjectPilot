@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import com.project.entity.DBFile;
 import com.project.repository.DBFileRepository;
-import com.project.service.GeminiService;
+import com.project.service.AIService;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.util.List;
 import java.util.Map;
@@ -16,13 +16,8 @@ import java.util.HashMap;
 import java.util.Collections;
 
 /**
- * Was a browser-facing @Controller returning JSP view names
- * ("employee-list", "employee-form"). As a microservice, this now returns
- * JSON instead - the natural shape for something meant to be called by
- * other services, a Postman collection, or a separate frontend app.
- *
- * UserService and UserRepository underneath are UNCHANGED from the
- * original project - only this controller layer changed.
+ * REST controller for User management and AI Resume skill extraction.
+ * Communicates with the standalone Python ai-service microservice.
  */
 @CrossOrigin(origins = "http://localhost:5173")
 @RestController
@@ -32,7 +27,7 @@ public class UserController {
     private final UserService userService;
 
     @Autowired
-    private GeminiService geminiService;
+    private AIService aiService;
 
     @Autowired
     private DBFileRepository dbFileRepository;
@@ -54,7 +49,7 @@ public class UserController {
         }
 
         try {
-            List<String> skills = geminiService.extractSkills(dbFile.getData(), dbFile.getContentType(), dbFile.getFileName());
+            List<String> skills = aiService.extractSkills(dbFile.getData(), dbFile.getContentType(), dbFile.getFileName());
             Map<String, Object> response = new HashMap<>();
             response.put("skills", skills);
             return ResponseEntity.ok(response);
@@ -105,9 +100,6 @@ public class UserController {
         }
     }
 
-    // Delete is restricted with @PreAuthorize instead of a requestMatcher in
-    // SecurityConfig - the second style of role check, enforced right next
-    // to the method it protects. Only ADMIN can delete a user.
     @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteUser(@PathVariable String id) {

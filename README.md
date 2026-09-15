@@ -2,11 +2,12 @@
 
 ProjectPilot is an AI-assisted academic project management and monitoring platform built for student project teams, team leaders, mentors, and administrators. It combines project planning, task and milestone tracking, weekly reports, team management, performance monitoring, notifications, file handling, and AI-assisted analysis in one application.
 
-The repository contains a **React + Vite frontend** and two **Spring Boot backend microservices**:
+The repository contains a **React + Vite frontend** and three **backend microservices**:
 
-- `auth-service` – authentication, registration, roles, JWT generation, and MySQL persistence.
-- `project-service` – projects, teams, tasks, milestones, reports, notifications, suggestions, files, member metrics, and AI-assisted analysis using Google Gemini.
-- React frontend – role-based dashboards and the user interface.
+- `auth-service` (Java Spring Boot) – authentication, registration, roles, JWT generation, and MySQL persistence (Port 8081).
+- `project-service` (Java Spring Boot) – projects, teams, tasks, milestones, reports, notifications, suggestions, files, and member metrics (Port 8082).
+- `ai-service` (Python FastAPI) – standalone, independent AI & NLP microservice for resume skill extraction, AI content detection, semantic similarity comparison, and document parsing (Port 8083).
+- React frontend – role-based dashboards and modern user interface (Port 5173).
 
 ---
 
@@ -47,17 +48,14 @@ The repository contains a **React + Vite frontend** and two **Spring Boot backen
 - Track report similarity and AI-generated-text probability.
 
 ### AI-Assisted Analysis
-The backend integrates Google Gemini for several intelligent features, including:
+The application includes a standalone Python AI microservice (`ai-service`) operating 100% independently without any external LLM or Google Gemini APIs:
 
-- AI-generated text probability analysis for weekly reports.
-- Semantic similarity analysis between reports.
-- Text embeddings for similarity comparison.
-- Resume text/skill extraction.
-- Document text extraction.
-- AI-assisted project/report analysis.
-- Project suggestions and insights.
-
-The similarity service uses **embedding-based cosine similarity** when Gemini embeddings are available and falls back to a local Java bag-of-words cosine similarity implementation if the AI embedding request fails.
+- AI-generated text probability analysis for weekly reports (burstiness, perplexity heuristics, discourse markers, lexical diversity).
+- Semantic and lexical similarity analysis between reports using sublinear TF-IDF and cosine vectorization.
+- Deterministic text embeddings for report comparison and caching.
+- Resume text and technical skill extraction across categorized software development domains.
+- Native document text extraction (PDF, DOCX, TXT, Base64).
+- Weekly report auditing and automatic threshold flagging (Similarity >= 50% or AI probability >= 60%).
 
 ### Performance and Contributions
 - Team/member performance views.
@@ -114,8 +112,8 @@ The similarity service uses **embedding-based cosine similarity** when Gemini em
 | Spring Data JPA | MySQL persistence |
 | Spring Data MongoDB | MongoDB persistence |
 | JJWT 0.13 | JWT creation and verification |
-| Maven | Backend dependency management/build |
-| Google Gemini | AI analysis and embeddings |
+| FastAPI / Uvicorn | Python AI microservice (Port 8083) |
+| Scikit-learn / NumPy | TF-IDF, embeddings & cosine similarity |
 
 ## Databases
 
@@ -297,13 +295,19 @@ mongodb://localhost:27017/projectpilot
 
 Make sure MongoDB is running before starting `project-service`.
 
-## 6. Google Gemini API Key
+## 6. Python AI Microservice (ai-service)
 
-AI features require a valid Google Gemini API key.
+The AI capabilities run as a dedicated, standalone Python FastAPI microservice located in `Backend/ai-service`.
 
-Do **not** commit a real API key to GitHub.
+To install and run:
 
-Configure the key securely in the backend configuration or through your preferred environment/secret-management approach.
+```bash
+cd Backend/ai-service
+pip install -r requirements.txt
+python -m uvicorn main:app --host 0.0.0.0 --port 8083 --reload
+```
+
+No external API keys (Gemini, OpenAI, etc.) are needed. The service runs completely offline and independent.
 
 ---
 
@@ -462,48 +466,31 @@ The project service handles:
 
 ---
 
-# 🧠 AI Configuration
+# 🧠 AI Microservice (`ai-service`)
 
-The project service contains the Gemini integration in:
-
-```text
-Backend/project-service/src/main/java/com/project/service/GeminiService.java
-```
-
-AI-related services include:
+The AI functionality is encapsulated in the independent Python microservice:
 
 ```text
-GeminiService.java
-AIService.java
-AIDetectionService.java
-SimilarityService.java
+Backend/ai-service/
+├── main.py
+├── services/
+│   ├── document_parser.py
+│   ├── skill_extractor.py
+│   ├── ai_detector.py
+│   └── similarity_engine.py
+├── requirements.txt
+└── run.bat
 ```
 
-The Gemini service is used for operations such as:
+The AI microservice performs:
 
-1. Extracting text from uploaded documents.
-2. Extracting skills from resumes.
-3. Estimating AI-generated text probability.
-4. Generating text embeddings.
-5. Supporting semantic similarity analysis.
+1. Extracting text from uploaded documents (PDF, DOCX, TXT).
+2. Extracting technical skills and categorizing competencies from resumes.
+3. Estimating AI-generated text probability using linguistic burstiness and marker heuristics.
+4. Generating dense text vector embeddings.
+5. Performing TF-IDF cosine similarity analysis across historical reports.
 
-### Security Recommendation
-
-Before pushing the project to a public GitHub repository:
-
-- Remove any hard-coded Gemini API key.
-- Remove database passwords from committed configuration.
-- Move secrets into environment variables or a secure secrets manager.
-- Rotate any credentials that have previously been committed.
-
-For example, avoid committing:
-
-```properties
-spring.datasource.password=YOUR_REAL_PASSWORD
-gemini.api.key=YOUR_REAL_API_KEY
-```
-
-Instead, use environment variables or an external configuration mechanism.
+Spring Boot `project-service` communicates with `ai-service` via REST client at `http://localhost:8083` (`ai.service.url`).
 
 ---
 
@@ -517,21 +504,23 @@ The overall architecture is:
                     │   Vite + Tailwind    │
                     └──────────┬───────────┘
                                │
-                     REST API + JWT
+                      REST API + JWT
                                │
-                ┌──────────────┴──────────────┐
-                │                             │
-       ┌────────▼────────┐          ┌────────▼─────────┐
-       │   Auth Service  │          │ Project Service  │
-       │ Spring Boot     │          │ Spring Boot      │
-       │ Port 8081       │          │ Port 8082        │
-       └────────┬────────┘          └───────┬──────────┘
-                │                           │
-             MySQL                      MongoDB
-                │                           │
-                │                     ┌─────▼─────┐
-                │                     │ Gemini AI │
-                │                     └───────────┘
+                 ┌─────────────┴─────────────┐
+                 │                           │
+        ┌────────▼────────┐        ┌─────────▼────────┐
+        │   Auth Service  │        │ Project Service  │
+        │ Spring Boot     │        │ Spring Boot      │
+        │ Port 8081       │        │ Port 8082        │
+        └────────┬────────┘        └────┬────────┬────┘
+                 │                      │        │
+              MySQL                  MongoDB     │ REST
+                 │                               │
+                                       ┌─────────▼────────┐
+                                       │    AI Service    │
+                                       │  Python FastAPI  │
+                                       │    Port 8083     │
+                                       └──────────────────┘
 ```
 
 ### Authentication Flow
@@ -676,9 +665,9 @@ Weekly Report
      └── Save analysis results
 ```
 
-The similarity process uses embeddings and cosine similarity when the Gemini embedding service is available.
+The similarity process uses TF-IDF and cosine vectorization from the Python `ai-service`.
 
-If the AI embedding operation fails, the service uses a local Java bag-of-words cosine similarity calculation as a fallback.
+If the Python `ai-service` is temporarily offline, `project-service` seamlessly falls back to a local Java cosine similarity calculation.
 
 > AI detection and similarity scores should be treated as indicators rather than definitive proof of plagiarism or AI authorship.
 
@@ -907,11 +896,9 @@ is exactly the same.
 
 Check:
 
-- Gemini API key configuration.
-- Internet connectivity.
-- Gemini API availability.
-- Backend logs for Gemini request errors.
-- API quota/limits.
+- Ensure `ai-service` is running on port 8083 (`python -m uvicorn main:app --port 8083`).
+- Verify `http://localhost:8083/health` returns status `UP`.
+- Check `project-service` console logs for HTTP connection timeouts to `ai.service.url`.
 
 ## Port already in use
 
@@ -923,10 +910,8 @@ If `8081`, `8082`, or the Vite development port is already occupied, stop the pr
 
 Before deploying this application publicly:
 
-1. Never commit database passwords.
-2. Never commit Gemini/API keys.
-3. Replace development secrets with environment variables.
-4. Use HTTPS in production.
+1. Never commit database passwords or production secrets.
+2. Use HTTPS in production.
 5. Configure appropriate CORS policies.
 6. Use strong JWT secrets.
 7. Restrict database access.
@@ -1006,16 +991,16 @@ Create Pull Request
 ProjectPilot currently follows a microservice-oriented backend architecture:
 
 ```text
-Frontend
+Frontend (Port 5173)
    │
-   ├──────────────► Auth Service ─────► MySQL
+   ├──────────────► Auth Service (Port 8081) ─────► MySQL
    │
-   └──────────────► Project Service ───► MongoDB
+   └──────────────► Project Service (Port 8082) ───► MongoDB
                               │
-                              └────────► Gemini AI
+                              └────────► AI Service (Python, Port 8083)
 ```
 
-This separation keeps authentication concerns independent from project-management and AI functionality.
+This 3-microservice architecture cleanly separates authentication, project management, and AI intelligence.
 
 ---
 

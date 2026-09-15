@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { FiUser, FiMail, FiLock, FiEye, FiEyeOff, FiChevronDown, FiAlertCircle, FiBookOpen, FiGrid, FiX, FiCheck } from 'react-icons/fi';
 import PasswordRequirements from './PasswordRequirements';
 import { usePage } from '../hooks/usePage';
-import { api, addNotification } from '../utils/api';
+import { api, addNotification, cleanAndDeduplicateSkills } from '../utils/api';
 
 const SignupForm = ({ showTerms, setShowTerms }) => {
   const { navigateTo } = usePage();
@@ -44,10 +44,10 @@ const SignupForm = ({ showTerms, setShowTerms }) => {
     if (e.key === 'Enter' || e.type === 'click') {
       e.preventDefault();
       const val = skillInput.trim();
-      if (val && !formData.skills.includes(val)) {
+      if (val) {
         setFormData(prev => ({
           ...prev,
-          skills: [...prev.skills, val]
+          skills: cleanAndDeduplicateSkills([...prev.skills, val])
         }));
         setSkillInput('');
       }
@@ -84,7 +84,7 @@ const SignupForm = ({ showTerms, setShowTerms }) => {
           if (extractedSkills && extractedSkills.length > 0) {
             setFormData(prev => ({
               ...prev,
-              skills: extractedSkills
+              skills: cleanAndDeduplicateSkills(extractedSkills)
             }));
           }
         } catch (extractErr) {

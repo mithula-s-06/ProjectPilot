@@ -3,6 +3,87 @@ import { fileStorage } from './fileStorage';
 const AUTH_URL = 'http://localhost:8081';
 const PROJECT_URL = 'http://localhost:8082';
 
+export function cleanAndDeduplicateSkills(skills) {
+  if (!skills || !Array.isArray(skills)) return [];
+
+  const aliasMap = {
+    'springboot': 'Spring Boot',
+    'spring-boot': 'Spring Boot',
+    'spring': 'Spring Boot',
+    'reactjs': 'React',
+    'react.js': 'React',
+    'react': 'React',
+    'nodejs': 'Node.js',
+    'node.js': 'Node.js',
+    'expressjs': 'Express.js',
+    'express.js': 'Express.js',
+    'nextjs': 'Next.js',
+    'next.js': 'Next.js',
+    'vuejs': 'Vue.js',
+    'vue.js': 'Vue.js',
+    'angularjs': 'Angular',
+    'tailwindcss': 'Tailwind CSS',
+    'tailwind': 'Tailwind CSS',
+    'postgres': 'PostgreSQL',
+    'postgresql': 'PostgreSQL',
+    'mongo': 'MongoDB',
+    'mongodb': 'MongoDB',
+    'k8s': 'Kubernetes',
+    'kubernetes': 'Kubernetes',
+    'js': 'JavaScript',
+    'javascript': 'JavaScript',
+    'ts': 'TypeScript',
+    'typescript': 'TypeScript',
+    'py': 'Python',
+    'python': 'Python',
+    'cpp': 'C++',
+    'cplusplus': 'C++',
+    'c#': 'C#',
+    'csharp': 'C#',
+    'golang': 'Go',
+    'gcp': 'Google Cloud Platform',
+    'aws': 'AWS',
+    'cicd': 'CI/CD',
+    'ci/cd': 'CI/CD',
+    'html': 'HTML',
+    'html5': 'HTML',
+    'css': 'CSS',
+    'css3': 'CSS',
+    'github': 'GitHub',
+    'git': 'Git',
+    'docker': 'Docker',
+    'postman': 'Postman',
+    'firebase': 'Firebase',
+    'mysql': 'MySQL',
+    'cybersecurity': 'Cybersecurity'
+  };
+
+  const headerPrefixRegex = /^[^:]*:\s*/i;
+
+  const seen = new Set();
+  const result = [];
+
+  for (const raw of skills) {
+    if (!raw || typeof raw !== 'string') continue;
+    let s = raw.trim();
+    if (s.includes(':') && !s.startsWith('http')) {
+      s = s.replace(headerPrefixRegex, '').trim();
+    }
+    if (!s || s.length < 2) continue;
+
+    const lower = s.toLowerCase();
+    const canonical = aliasMap[lower] || s;
+    const normKey = canonical.toLowerCase().replace(/[\s\-_.:]/g, '');
+
+    if (!seen.has(normKey)) {
+      seen.add(normKey);
+      result.push(canonical);
+    }
+  }
+
+  return result;
+}
+
 async function request(url, options = {}) {
   const token = localStorage.getItem('token');
   const headers = {
@@ -428,7 +509,8 @@ export const api = {
       throw new Error('Skills extraction failed');
     }
     const data = await response.json();
-    return data.skills || [];
+    const rawSkills = data.skills || [];
+    return cleanAndDeduplicateSkills(rawSkills);
   },
 
   async downloadFile(fileIdOrUrl) {
