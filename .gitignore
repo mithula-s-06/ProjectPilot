@@ -26,3 +26,15 @@ dist-ssr
 # Maven
 target/
 **/target/
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.env
+venv/
+.venv/
+env/
+
