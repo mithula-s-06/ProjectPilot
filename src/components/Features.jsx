@@ -1,20 +1,8 @@
 import React from 'react';
-import { FiCompass, FiActivity, FiCopy, FiEye, FiGitBranch, FiAlertTriangle } from 'react-icons/fi';
+import { FiCopy, FiEye } from 'react-icons/fi';
 
 const Features = () => {
   const featuresList = [
-    {
-      icon: <FiCompass className="w-6 h-6" />,
-      title: 'AI Project Guidance',
-      description: 'Suggests the next task students should perform after analyzing project progress and codebase development.',
-      colorClass: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
-    },
-    {
-      icon: <FiActivity className="w-6 h-6" />,
-      title: 'Project Health Score',
-      description: 'Calculates an overall health score using milestone completeness, documentation depth, GitHub activity, weekly reports, and task velocity.',
-      colorClass: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
-    },
     {
       icon: <FiCopy className="w-6 h-6" />,
       title: 'Plagiarism Detection',
@@ -26,18 +14,6 @@ const Features = () => {
       title: 'AI Content Detection',
       description: 'Identifies AI-generated reports and code blocks to encourage authentic student learning and critical thinking.',
       colorClass: 'text-indigo-400 bg-indigo-400/10 border-indigo-400/20',
-    },
-    {
-      icon: <FiGitBranch className="w-6 h-6" />,
-      title: 'GitHub Contribution Analytics',
-      description: "Measures each team member's direct contribution using commits, pull requests, issue resolution, and repository activity metrics.",
-      colorClass: 'text-amber-400 bg-amber-400/10 border-amber-400/20',
-    },
-    {
-      icon: <FiAlertTriangle className="w-6 h-6" />,
-      title: 'Risk Prediction',
-      description: 'Predicts potential project delays and identifies teams at risk of failing milestones before important deadlines are missed.',
-      colorClass: 'text-rose-400 bg-rose-400/10 border-rose-400/20',
     },
   ];
 
@@ -61,7 +37,7 @@ const Features = () => {
         </div>
 
         {/* Features Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 max-w-4xl mx-auto gap-8">
           {featuresList.map((feature, idx) => (
             <div
               key={idx}
