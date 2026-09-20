@@ -2,7 +2,6 @@ import React from 'react';
 import { FiLogIn } from 'react-icons/fi';
 import { usePage } from '../hooks/usePage';
 import AuthLayout from '../components/AuthLayout';
-import GoogleSignupButton from '../components/GoogleSignupButton'; // We reuse the Google button
 import LoginForm from '../components/LoginForm';
 
 const Login = () => {

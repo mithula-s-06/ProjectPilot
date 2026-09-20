@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import AuthLayout from '../components/AuthLayout';
-import GoogleSignupButton from '../components/GoogleSignupButton';
 import SignupForm from '../components/SignupForm';
 import { usePage } from '../hooks/usePage';
 

@@ -1,0 +1,93 @@
+services:
+  # 1. MySQL Database (for auth-service)
+  mysql-db:
+    image: mysql:8.0
+    container_name: projectpilot-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-mithuS@06}
+      MYSQL_DATABASE: projectpilot
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - projectpilot-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-mithuS@06}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. MongoDB Database (for project-service)
+  mongo-db:
+    image: mongo:6.0
+    container_name: projectpilot-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - projectpilot-network
+
+  # 3. Python AI Microservice (Port 8083)
+  ai-service:
+    build:
+      context: ./Backend/ai-service
+      dockerfile: Dockerfile
+    container_name: projectpilot-ai-service
+    restart: always
+    ports:
+      - "8083:8083"
+    networks:
+      - projectpilot-network
+
+  # 4. Java Spring Boot Auth Service (Port 8081)
+  auth-service:
+    build:
+      context: ./Backend/auth-service
+      dockerfile: Dockerfile
+    container_name: projectpilot-auth-service
+    restart: always
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-db:3306/projectpilot?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-mithuS@06}
+      JWT_SECRET: ProjectPilotYourAIAssistedGuideToBuildABetterProject
+    ports:
+      - "8081:8081"
+    networks:
+      - projectpilot-network
+
+  # 5. Java Spring Boot Project Service (Port 8082)
+  project-service:
+    build:
+      context: ./Backend/project-service
+      dockerfile: Dockerfile
+    container_name: projectpilot-project-service
+    restart: always
+    depends_on:
+      - mongo-db
+      - ai-service
+    environment:
+      SERVER_PORT: 8082
+      SPRING_DATA_MONGODB_URI: mongodb://mongo-db:27017/projectpilot
+      AI_SERVICE_URL: http://ai-service:8083
+      JWT_SECRET: ProjectPilotYourAIAssistedGuideToBuildABetterProject
+    ports:
+      - "8082:8082"
+    networks:
+      - projectpilot-network
+
+volumes:
+  mysql_data:
+  mongo_data:
+
+networks:
+  projectpilot-network:
+    driver: bridge
