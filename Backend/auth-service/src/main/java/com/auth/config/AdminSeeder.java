@@ -1,11 +1,12 @@
 package com.auth.config;
 
-import com.auth.entity.AppUser;
-import com.auth.repository.AppUserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+
+import com.auth.entity.AppUser;
+import com.auth.repository.AppUserRepository;
 
 /**
  * Seeder to create a single default Admin user if none exists in the database on startup.
@@ -24,7 +25,7 @@ public class AdminSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        if (appUserRepository.findByEmail("admin@pp.edu") == null) {
+        if (appUserRepository.findByEmail("admin@pp.edu").isEmpty()) {
             AppUser admin = new AppUser();
             admin.setName("System Administrator");
             admin.setEmail("admin@pp.edu");
