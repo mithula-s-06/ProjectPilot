@@ -1,7 +1,7 @@
 import { fileStorage } from './fileStorage';
 
-const AUTH_URL = import.meta.env?.VITE_AUTH_API_URL || 'http://localhost:8081';
-const PROJECT_URL = import.meta.env?.VITE_PROJECT_API_URL || 'http://localhost:8082';
+const AUTH_URL = (import.meta.env?.VITE_AUTH_API_URL || 'http://localhost:8081').replace(/\/+$/, '');
+const PROJECT_URL = (import.meta.env?.VITE_PROJECT_API_URL || 'http://localhost:8082').replace(/\/+$/, '');
 
 export function cleanAndDeduplicateSkills(skills) {
   if (!skills || !Array.isArray(skills)) return [];
