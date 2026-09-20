@@ -31,11 +31,8 @@ public class SecurityConfig {
             .sessionManagement(session ->
                     session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                    .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                     .requestMatchers("/api/auth/**").permitAll()
-                    // Without this, an unhandled exception (e.g. a DB error)
-                    // gets forwarded internally to /error, which then hits
-                    // this same rule set - and since it's not permitted, you
-                    // see a misleading 403 instead of the real 500.
                     .requestMatchers("/error").permitAll()
                     .anyRequest().authenticated())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
@@ -64,5 +61,10 @@ public class SecurityConfig {
         org.springframework.web.cors.UrlBasedCorsConfigurationSource source = new org.springframework.web.cors.UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    @Bean
+    public org.springframework.web.filter.CorsFilter corsFilter() {
+        return new org.springframework.web.filter.CorsFilter(corsConfigurationSource());
     }
 }
